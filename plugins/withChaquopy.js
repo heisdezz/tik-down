@@ -1,106 +1,110 @@
 // @ts-check
-const {
-  withSettingsGradle,
-  withAppBuildGradle,
-  withDangerousMod,
-} = require("@expo/config-plugins");
+const { withDangerousMod } = require("@expo/config-plugins");
 const path = require("path");
 const fs = require("fs");
 
 const CHAQUOPY_VERSION = "15.0.1";
 const CHAQUOPY_MAVEN = "https://chaquo.com/maven";
 
-const isKotlinDSL = (contents) => contents.includes('maven(') || contents.includes('id(');
+/**
+ * Add Chaquopy to root build.gradle:
+ *   - buildscript.repositories  → Maven URL for plugin resolution
+ *   - buildscript.dependencies  → plugin classpath
+ *   - allprojects.repositories  → Maven URL for runtime artifacts
+ */
+function withChaquopyRootBuild(config) {
+  return withDangerousMod(config, [
+    "android",
+    (config) => {
+      const buildPath = path.join(
+        config.modRequest.projectRoot,
+        "android",
+        "build.gradle"
+      );
+      if (!fs.existsSync(buildPath)) return config;
 
-/** Add Chaquopy Maven repo + plugin declaration to settings.gradle(.kts) */
-function withChaquopySettings(config) {
-  return withSettingsGradle(config, (config) => {
-    let contents = config.modResults.contents;
+      let c = fs.readFileSync(buildPath, "utf-8");
+      const mavenBlock = `        maven { url "${CHAQUOPY_MAVEN}" }`;
 
-    if (!contents.includes("chaquo.com/maven")) {
-      if (isKotlinDSL(contents)) {
-        // Kotlin DSL: insert after first repository entry inside pluginManagement.repositories
-        contents = contents.replace(
-          /pluginManagement\s*\{([\s\S]*?repositories\s*\{)/,
-          (match) =>
-            match.replace(
-              /repositories\s*\{/,
-              `repositories {\n        maven("${CHAQUOPY_MAVEN}")`
-            )
-        );
-      } else {
-        // Groovy DSL
-        contents = contents.replace(
-          /pluginManagement\s*\{([\s\S]*?repositories\s*\{)/,
-          (match) =>
-            match.replace(
-              /repositories\s*\{/,
-              `repositories {\n        maven { url "${CHAQUOPY_MAVEN}" }`
-            )
+      // buildscript.repositories
+      if (!c.includes("chaquo.com")) {
+        c = c.replace(
+          /(buildscript\s*\{[\s\S]*?repositories\s*\{)/,
+          `$1\n${mavenBlock}`
         );
       }
-    }
 
-    // Add plugin version declaration inside pluginManagement (after repositories block)
-    if (!contents.includes("com.chaquo.python")) {
-      const pluginLine = isKotlinDSL(contents)
-        ? `    id("com.chaquo.python") version "${CHAQUOPY_VERSION}"`
-        : `    id 'com.chaquo.python' version '${CHAQUOPY_VERSION}'`;
-
-      if (contents.match(/pluginManagement\s*\{[\s\S]*?plugins\s*\{/)) {
-        // Append inside existing plugins { } block
-        contents = contents.replace(/(pluginManagement[\s\S]*?plugins\s*\{)/, `$1\n${pluginLine}`);
-      } else {
-        // No plugins block — add one before the end of pluginManagement
-        const chaquopyPluginsBlock = `\nplugins {\n${pluginLine}\n}\n`;
-        contents = contents.replace(
-          /(pluginManagement\s*\{[\s\S]*?)(^\})/m,
-          `$1${chaquopyPluginsBlock}$2`
+      // buildscript.dependencies classpath
+      if (!c.includes("com.chaquo.python:gradle")) {
+        c = c.replace(
+          /(buildscript\s*\{[\s\S]*?dependencies\s*\{)/,
+          `$1\n        classpath "com.chaquo.python:gradle:${CHAQUOPY_VERSION}"`
         );
       }
-    }
 
-    config.modResults.contents = contents;
-    return config;
-  });
+      // allprojects.repositories (needed for Chaquopy runtime artifacts)
+      if (c.includes("allprojects") && !c.includes("chaquo.com")) {
+        c = c.replace(
+          /(allprojects\s*\{[\s\S]*?repositories\s*\{)/,
+          `$1\n${mavenBlock}`
+        );
+      }
+
+      fs.writeFileSync(buildPath, c);
+      return config;
+    },
+  ]);
 }
 
-/** Apply Chaquopy plugin + configure pip inside app/build.gradle(.kts) */
+/**
+ * Add `apply plugin: "com.chaquo.python"` to app/build.gradle.
+ * Also ensures the ndk + python blocks are in defaultConfig.
+ */
 function withChaquopyAppBuild(config) {
-  return withAppBuildGradle(config, (config) => {
-    let contents = config.modResults.contents;
-    const kts = isKotlinDSL(contents);
+  return withDangerousMod(config, [
+    "android",
+    (config) => {
+      const buildPath = path.join(
+        config.modRequest.projectRoot,
+        "android",
+        "app",
+        "build.gradle"
+      );
+      if (!fs.existsSync(buildPath)) return config;
 
-    // Apply plugin
-    if (!contents.includes("com.chaquo.python")) {
-      const pluginLine = kts
-        ? `    id("com.chaquo.python")`
-        : `    id 'com.chaquo.python'`;
-      contents = contents.replace(/(plugins\s*\{)/, `$1\n${pluginLine}`);
-    }
+      let c = fs.readFileSync(buildPath, "utf-8");
 
-    // Add ndk abiFilters
-    if (!contents.includes("abiFilters")) {
-      const ndk = kts
-        ? `        ndk {\n            abiFilters += listOf("arm64-v8a", "x86_64")\n        }`
-        : `        ndk {\n            abiFilters "arm64-v8a", "x86_64"\n        }`;
-      contents = contents.replace(/(defaultConfig\s*\{)/, `$1\n${ndk}`);
-    }
+      // apply plugin — insert after the last existing apply plugin line
+      if (!c.includes("com.chaquo.python")) {
+        c = c.replace(
+          /(apply plugin: "com\.facebook\.react")/,
+          `$1\napply plugin: "com.chaquo.python"`
+        );
+      }
 
-    // Add python pip block
-    if (!contents.includes("python {")) {
-      const pip = kts
-        ? `        python {\n            pip {\n                install("yt-dlp")\n            }\n        }`
-        : `        python {\n            pip {\n                install 'yt-dlp'\n            }\n        }`;
-      contents = contents.replace(/(defaultConfig\s*\{)/, `$1\n${pip}`);
-    }
+      // ndk abiFilters
+      if (!c.includes("abiFilters")) {
+        c = c.replace(
+          /(defaultConfig\s*\{)/,
+          `$1\n        ndk {\n            abiFilters "arm64-v8a", "x86_64"\n        }`
+        );
+      }
 
-    config.modResults.contents = contents;
-    return config;
-  });
+      // python pip block
+      if (!c.includes("python {")) {
+        c = c.replace(
+          /(defaultConfig\s*\{)/,
+          `$1\n        python {\n            pip {\n                install 'yt-dlp'\n            }\n        }`
+        );
+      }
+
+      fs.writeFileSync(buildPath, c);
+      return config;
+    },
+  ]);
 }
 
-/** Write the Python bridge script into android/app/src/main/python/ */
+/** Copy Python bridge script into android/app/src/main/python/ */
 function withPythonBridge(config) {
   return withDangerousMod(config, [
     "android",
@@ -118,14 +122,13 @@ function withPythonBridge(config) {
   ]);
 }
 
-/** Write Kotlin native module files into android/app/src/main/java/<package>/modules/ytdlp/ */
+/** Write Kotlin YtDlpModule + YtDlpPackage into the app's java source tree */
 function withYtDlpKotlin(config) {
   return withDangerousMod(config, [
     "android",
     (config) => {
       const root = config.modRequest.projectRoot;
       const pkg = config.android?.package ?? "com.tikdown.app";
-      const pkgPath = pkg.replace(/\./g, "/");
       const javaDir = path.join(
         root,
         "android",
@@ -133,23 +136,16 @@ function withYtDlpKotlin(config) {
         "src",
         "main",
         "java",
-        pkgPath,
+        ...pkg.split("."),
         "modules",
         "ytdlp"
       );
 
       if (!fs.existsSync(javaDir)) fs.mkdirSync(javaDir, { recursive: true });
-
       const modulePkg = `${pkg}.modules.ytdlp`;
 
-      fs.writeFileSync(
-        path.join(javaDir, "YtDlpModule.kt"),
-        generateYtDlpModule(modulePkg)
-      );
-      fs.writeFileSync(
-        path.join(javaDir, "YtDlpPackage.kt"),
-        generateYtDlpPackage(modulePkg)
-      );
+      fs.writeFileSync(path.join(javaDir, "YtDlpModule.kt"), ytDlpModuleKt(modulePkg));
+      fs.writeFileSync(path.join(javaDir, "YtDlpPackage.kt"), ytDlpPackageKt(modulePkg));
       return config;
     },
   ]);
@@ -162,7 +158,6 @@ function withYtDlpMainApplication(config) {
     (config) => {
       const root = config.modRequest.projectRoot;
       const pkg = config.android?.package ?? "com.tikdown.app";
-      const pkgPath = pkg.replace(/\./g, "/");
       const mainAppPath = path.join(
         root,
         "android",
@@ -170,36 +165,30 @@ function withYtDlpMainApplication(config) {
         "src",
         "main",
         "java",
-        pkgPath,
+        ...pkg.split("."),
         "MainApplication.kt"
       );
-
       if (!fs.existsSync(mainAppPath)) return config;
 
-      let contents = fs.readFileSync(mainAppPath, "utf-8");
+      let c = fs.readFileSync(mainAppPath, "utf-8");
+      if (c.includes("YtDlpPackage")) return config; // idempotent
+
       const importLine = `import ${pkg}.modules.ytdlp.YtDlpPackage`;
+      c = c.replace(/^(package .+\n)/m, `$1\n${importLine}\n`);
+      c = c.replace(
+        /PackageList\(this\)\.packages\.apply\s*\{/,
+        `PackageList(this).packages.apply {\n                add(YtDlpPackage())`
+      );
 
-      // Add import if missing
-      if (!contents.includes("YtDlpPackage")) {
-        contents = contents.replace(
-          /^(package .+\n)/m,
-          `$1\n${importLine}\n`
-        );
-
-        // Register package inside getPackages().apply { }
-        contents = contents.replace(
-          /PackageList\(this\)\.packages\.apply\s*\{/,
-          `PackageList(this).packages.apply {\n                add(YtDlpPackage())`
-        );
-      }
-
-      fs.writeFileSync(mainAppPath, contents);
+      fs.writeFileSync(mainAppPath, c);
       return config;
     },
   ]);
 }
 
-function generateYtDlpModule(pkg) {
+// ─── Kotlin source templates ─────────────────────────────────────────────────
+
+function ytDlpModuleKt(pkg) {
   return `package ${pkg}
 
 import com.chaquo.python.PyException
@@ -257,7 +246,7 @@ class YtDlpModule(reactContext: ReactApplicationContext) :
 `;
 }
 
-function generateYtDlpPackage(pkg) {
+function ytDlpPackageKt(pkg) {
   return `package ${pkg}
 
 import com.facebook.react.ReactPackage
@@ -276,7 +265,7 @@ class YtDlpPackage : ReactPackage {
 }
 
 const withChaquopy = (config) => {
-  config = withChaquopySettings(config);
+  config = withChaquopyRootBuild(config);
   config = withChaquopyAppBuild(config);
   config = withPythonBridge(config);
   config = withYtDlpKotlin(config);

@@ -68,8 +68,10 @@ jobs:
           cd android && ./gradlew assembleDebug \
             -Dorg.gradle.daemon=false \
             -Dorg.gradle.parallel=true \
+            -Dorg.gradle.configuration-cache=false \
             -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=512m"
         # Chaquopy downloads Python + yt-dlp pip packages during this step (~5 min first run)
+        # configuration-cache=false: Chaquopy 15 is not yet compatible with Gradle 9 config cache
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
