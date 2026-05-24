@@ -2,6 +2,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { Stack } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Platform, useColorScheme } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useDeviceContext } from 'twrnc';
 
 import tw from '@/lib/tw';
@@ -53,18 +54,20 @@ export default function RootLayout() {
   }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
-      <Stack screenOptions={{ headerShown: false }} />
-      <FolderPickerModal
-        visible={showStorageModal}
-        onAppDocuments={handleAppDocuments}
-        onChooseFolder={handleChooseFolder}
-      />
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <AnimatedSplashOverlay />
+        <Stack screenOptions={{ headerShown: false }} />
+        <FolderPickerModal
+          visible={showStorageModal}
+          onAppDocuments={handleAppDocuments}
+          onChooseFolder={handleChooseFolder}
+        />
 
-      {/* Global logs bottom sheet and floating action button */}
-      <LogsBottomSheet />
-      <GlobalFab />
-    </ThemeProvider>
+        {/* Global logs bottom sheet and floating action button */}
+        <LogsBottomSheet />
+        <GlobalFab />
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }
