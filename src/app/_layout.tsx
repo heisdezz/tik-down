@@ -25,17 +25,8 @@ export default function RootLayout() {
 
   const [showStorageModal, setShowStorageModal] = useState(false);
 
-  const hydrateDownloads = useDownloadsStore((s) => s.hydrate);
-  const hydrateProfiles = useProfilesStore((s) => s.hydrate);
-  const loadSettings = useSettingsStore((s) => s.load);
   const settingsLoaded = useSettingsStore((s) => s.loaded);
   const hasAskedStorage = useSettingsStore((s) => s.hasAskedStorage);
-
-  useEffect(() => {
-    hydrateDownloads();
-    hydrateProfiles();
-    loadSettings();
-  }, [hydrateDownloads, hydrateProfiles, loadSettings]);
 
   useEffect(() => {
     if (!settingsLoaded || hasAskedStorage) return;

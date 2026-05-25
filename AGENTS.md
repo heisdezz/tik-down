@@ -8,7 +8,8 @@ TikTok video downloader built with Expo SDK 55 / React Native. Targets Android (
 |---|---|
 | Framework | Expo SDK 55, expo-router (file-based routing) |
 | Language | TypeScript (strict) |
-| State | Zustand v5 |
+| State | Zustand v5 + `persist` middleware |
+| Persistence| `react-native-mmkv` (C++ high-performance storage) |
 | Styling | twrnc (Tailwind RN) + custom pastel palette |
 | HTTP | axios (API calls), expo-file-system (file downloads) |
 | Icons | `@expo/vector-icons` Ionicons — **not** expo-symbols (iOS-only) |
@@ -37,7 +38,7 @@ tik-down/
 ├── lib/                   # Shared utilities (importable as @/lib/*)
 │   ├── api.ts             # fetchTikTokProfile — streams NDJSON from backend
 │   ├── download.ts        # getDownloadUrl (axios → tikdownloader.io) + downloadVideo (FileSystem)
-│   ├── storage.ts         # Downloads JSON persistence via expo-file-system/legacy
+│   ├── mmkv.ts            # MMKV instance + Zustand storage adapter
 │   ├── tiktok.ts          # normalizeUsername helper
 │   └── tw.ts              # twrnc instance + palette (single source of truth for colours)
 ├── types/                 # Shared types (importable as @/types/*)
@@ -100,12 +101,13 @@ On `status === 'done'`, automatically calls `useProfilesStore.getState().markVid
 `DownloadItem.progress` is a `0–1` float updated during download — subscribe to it for live progress UI.
 
 ### `useProfilesStore` (`src/store/profiles.ts`)
-Persists fetched profiles to `documentDirectory/tik-down-profiles.json`.
+Persists fetched profiles to MMKV (`tik-down-profiles`).
 - `fetchProfile(rawUsername)` — normalises username, calls `lib/api.ts`, preserves `downloadedVideoIds` on refresh
 - `markVideoDownloaded(username, videoId)` — appends to profile's `downloadedVideoIds` and persists
 - Old records missing `downloadedVideoIds` are migrated on load
 
 ### `useSettingsStore` (`src/store/settings.ts`)
+Persists app settings to MMKV (`tik-down-settings`).
 - `getDownloadDir()` — returns either SAF URI (`content://…`) or `documentDirectory/TikDown/`
 - `pickDownloadDir()` — opens Android SAF folder picker
 - `resetDownloadDir()` — reverts to app documents
@@ -129,6 +131,7 @@ The app uses Android Storage Access Framework (SAF) for user-chosen folders. SAF
 
 ## Key Conventions
 
+- **Persistence**: All store data is persisted via `react-native-mmkv`. Manual file-based JSON storage (storage.ts) is deprecated.
 - **Type Checking**: Always use `tsgo` for TypeScript verification. It is provided by `@typescript/native-preview` and is optimized for this project's native stack.
 - **Performance**: Use `FlashList` for all long lists and `Image` from `expo-image` for all thumbnails to ensure smooth UI transitions and memory efficiency.
 - **Auto-Logging**: All critical operations in `lib/` and `src/store/` must use the global `Logger`. Errors and warnings are automatically surfaced in the global `LogsBottomSheet`.
@@ -137,7 +140,7 @@ The app uses Android Storage Access Framework (SAF) for user-chosen folders. SAF
 - **expo-file-system imports**: always use `expo-file-system/legacy` (SDK 55 moved the old API there)
 - **No expo-symbols**: use `Ionicons` from `@expo/vector-icons` for all icons — expo-symbols is iOS-only
 - **Nested Pressables**: used for download buttons inside tappable cards — React Native handles propagation correctly, inner press does not bubble to outer
-- **Zustand outside React**: use `useStore.getState()` (e.g., `useSettingsStore.getState().getDownloadDir()`)
+- **Zustand outside React**: use `useStore.getState()` (e.g., `useSettingsStore.getState().getDownloadDir()`). Note that stores hydrate asynchronously on startup; use `onRehydrateStorage` for startup logic.
 - **Backend**: profile data is fetched from `https://tik-down-backend.vercel.app/tiktok?u=<username>&limit=<n>` as NDJSON (one `VideoPost` JSON object per line)
 - **Floating action button**: Uses `expo-fab` (integrated implementation) for an animated, menu-style FAB with backdrop blur. Dragging has been removed in favor of a consistent fixed position.
 - **Bottom Sheets**: Uses `@gorhom/bottom-sheet`. The global `LogsBottomSheet` uses `BottomSheetModal` which requires `BottomSheetModalProvider` at the root (`_layout.tsx`).

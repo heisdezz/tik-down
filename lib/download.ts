@@ -73,11 +73,36 @@ export async function getDownloadUrl(tiktokUrl: string): Promise<string> {
 export async function downloadVideo(
   url: string,
   filename: string,
-  destDir: string,
+  baseDir: string,
+  subDir: string | null,
   onProgress: (progress: number) => void,
 ): Promise<string> {
-  Logger.info("Starting video download", { filename, destDir });
-  const isSAF = destDir.startsWith("content://");
+  Logger.info("Starting video download", { filename, baseDir, subDir });
+
+  let destDir = baseDir;
+  const isSAF = baseDir.startsWith("content://");
+
+  if (subDir) {
+    if (isSAF) {
+      try {
+        destDir = await FileSystem.StorageAccessFramework.makeDirectoryAsync(
+          baseDir,
+          subDir,
+        );
+        Logger.debug("Using SAF subdirectory", { destDir });
+      } catch (e) {
+        Logger.warn(
+          "Failed to create/get SAF subdirectory, falling back to base",
+          { error: (e as Error).message },
+        );
+      }
+    } else {
+      destDir = baseDir.endsWith("/")
+        ? `${baseDir}${subDir}/`
+        : `${baseDir}/${subDir}/`;
+      await ensureDir(destDir);
+    }
+  }
 
   if (isSAF) {
     // Download to cache, then move into the SAF directory
@@ -143,7 +168,7 @@ export async function downloadVideo(
 
   // Normal file:// destination
   await ensureDir(destDir);
-  const filePath = destDir + filename;
+  const filePath = destDir + (destDir.endsWith("/") ? "" : "/") + filename;
 
   const task = FileSystem.createDownloadResumable(url, filePath, {}, (snap) => {
     if (snap.totalBytesExpectedToWrite > 0) {

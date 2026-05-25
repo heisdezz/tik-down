@@ -1,11 +1,12 @@
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 import { VideoPost } from "@/types/api";
 import { DownloadItem, DownloadStatus } from "@/types/download";
 import { getDownloadUrl, downloadVideo } from "@/lib/download";
-import * as storage from "@/lib/storage";
 import { useSettingsStore } from "@/store/settings";
 import { useProfilesStore } from "@/store/profiles";
 import Logger from "@/lib/logger";
+import { mmkvStorage } from "@/lib/mmkv";
 
 interface DownloadsStore {
   items: DownloadItem[];
@@ -28,26 +29,12 @@ async function runDownload(
     id: item.id,
     videoId: item.videoId,
   });
+
   const update = (u: Partial<DownloadItem>) => {
     const merged = { ...u, updatedAt: Date.now() };
     set((s) => ({
       items: s.items.map((i) => (i.id === item.id ? { ...i, ...merged } : i)),
     }));
-    storage
-      .loadDownloads()
-      .then((all) => {
-        const idx = all.findIndex((i) => i.id === item.id);
-        if (idx >= 0)
-          storage.saveAllDownloads(
-            all.map((i) => (i.id === item.id ? { ...i, ...merged } : i)),
-          );
-      })
-      .catch((err) => {
-        Logger.error("Failed to sync download state to storage", {
-          id: item.id,
-          error: (err as Error).message,
-        });
-      });
   };
 
   try {
@@ -56,11 +43,14 @@ async function runDownload(
 
     update({ status: "downloading" as DownloadStatus, progress: 0 });
     const filename = `${item.videoId || item.id}.mp4`;
-    const destDir = useSettingsStore.getState().getDownloadDir();
+    const baseDir = useSettingsStore.getState().getDownloadDir();
+    const subDir = item.profileUsername || null;
+
     const localPath = await downloadVideo(
       downloadUrl,
       filename,
-      destDir,
+      baseDir,
+      subDir,
       (progress) => {
         update({ progress });
       },
@@ -83,72 +73,84 @@ async function runDownload(
   }
 }
 
-export const useDownloadsStore = create<DownloadsStore>((set, get) => ({
-  items: [],
-  hydrated: false,
+export const useDownloadsStore = create<DownloadsStore>()(
+  persist(
+    (set, get) => ({
+      items: [],
+      hydrated: false,
 
-  hydrate: async () => {
-    try {
-      const items = await storage.loadDownloads();
-      const reset = items.map((i) =>
-        i.status === "downloading" || i.status === "fetching_url"
-          ? { ...i, status: "failed" as DownloadStatus, error: "Interrupted" }
-          : i,
-      );
-      set({ items: reset, hydrated: true });
-      Logger.info("Downloads store hydrated", { count: reset.length });
-    } catch (err) {
-      Logger.error("Failed to hydrate downloads store", {
-        error: (err as Error).message,
-      });
-    }
-  },
+      hydrate: async () => {
+        // Handled by persist middleware
+        set({ hydrated: true });
+      },
 
-  startDownload: async (video, profileUsername, profileUrl) => {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    Logger.info("Queuing new download", { videoId: video.id, profileUsername });
-    const webpageUrl = video.webpage_url ?? video.url ?? "";
-    const thumbnail = video.thumbnails?.at(-1)?.url ?? video.thumbnail;
+      startDownload: async (video, profileUsername, profileUrl) => {
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        Logger.info("Queuing new download", {
+          videoId: video.id,
+          profileUsername,
+        });
+        const webpageUrl = video.webpage_url ?? video.url ?? "";
+        const thumbnail = video.thumbnails?.at(-1)?.url ?? video.thumbnail;
 
-    const item: DownloadItem = {
-      id,
-      videoId: video.id,
-      profileUsername,
-      profileUrl,
-      title: video.title || "Untitled",
-      thumbnail,
-      webpageUrl,
-      status: "pending",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
+        const item: DownloadItem = {
+          id,
+          videoId: video.id,
+          profileUsername,
+          profileUrl,
+          title: video.title || "Untitled",
+          thumbnail,
+          webpageUrl,
+          status: "pending",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
 
-    set((s) => ({ items: [item, ...s.items] }));
-    await storage.persistDownload(item);
-    runDownload(item, set);
-  },
+        set((s) => ({ items: [item, ...s.items] }));
+        runDownload(item, set);
+      },
 
-  retryDownload: async (id) => {
-    Logger.info("Retrying download", { id });
-    const item = get().items.find((i) => i.id === id);
-    if (!item) {
-      Logger.warn("Attempted to retry non-existent download", { id });
-      return;
-    }
-    const reset: DownloadItem = {
-      ...item,
-      status: "pending",
-      error: undefined,
-      progress: undefined,
-    };
-    set((s) => ({ items: s.items.map((i) => (i.id === id ? reset : i)) }));
-    await storage.persistDownload(reset);
-    runDownload(reset, set);
-  },
+      retryDownload: async (id) => {
+        Logger.info("Retrying download", { id });
+        const item = get().items.find((i) => i.id === id);
+        if (!item) {
+          Logger.warn("Attempted to retry non-existent download", { id });
+          return;
+        }
+        const reset: DownloadItem = {
+          ...item,
+          status: "pending",
+          error: undefined,
+          progress: undefined,
+        };
+        set((s) => ({ items: s.items.map((i) => (i.id === id ? reset : i)) }));
+        runDownload(reset, set);
+      },
 
-  removeDownload: async (id) => {
-    Logger.info("Removing download from history", { id });
-    set((s) => ({ items: s.items.filter((i) => i.id !== id) }));
-    await storage.removePersistedDownload(id);
-  },
-}));
+      removeDownload: async (id) => {
+        Logger.info("Removing download from history", { id });
+        set((s) => ({ items: s.items.filter((i) => i.id !== id) }));
+      },
+    }),
+    {
+      name: "tik-down-downloads",
+      storage: createJSONStorage(() => mmkvStorage),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          // Reset stuck downloads on rehydrate
+          state.items = state.items.map((i) =>
+            i.status === "downloading" || i.status === "fetching_url"
+              ? {
+                  ...i,
+                  status: "failed" as DownloadStatus,
+                  error: "Interrupted",
+                }
+              : i,
+          );
+          state.hydrated = true;
+          Logger.info("Downloads rehydrated from MMKV");
+        }
+      },
+    },
+  ),
+);
