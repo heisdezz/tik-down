@@ -9,6 +9,7 @@ TikTok video downloader built with Expo SDK 55 / React Native. Targets Android (
 | Framework | Expo SDK 55, expo-router (file-based routing) |
 | Language | TypeScript (strict) |
 | State | Zustand v5 + `persist` middleware |
+| Caching | TanStack React Query v5 |
 | Persistence| `react-native-mmkv` (C++ high-performance storage) |
 | Styling | twrnc (Tailwind RN) + custom pastel palette |
 | HTTP | axios (API calls), expo-file-system (file downloads) |
@@ -40,7 +41,8 @@ tik-down/
 │   ├── download.ts        # getDownloadUrl (axios → tikdownloader.io) + downloadVideo (FileSystem)
 │   ├── mmkv.ts            # MMKV instance + Zustand storage adapter
 │   ├── tiktok.ts          # normalizeUsername helper
-│   └── tw.ts              # twrnc instance + palette (single source of truth for colours)
+│   ├── tw.ts              # twrnc instance + palette (single source of truth for colours)
+│   └── validator.ts       # validateFileExists — check presence of files/SAF URIs
 ├── types/                 # Shared types (importable as @/types/*)
 │   ├── api.ts             # VideoPost, TikTokThumbnail
 │   ├── download.ts        # DownloadItem, DownloadStatus
@@ -91,10 +93,18 @@ Never hardcode hex values that duplicate palette entries.
 ## State Stores
 
 ### `useDownloadsStore` (`src/store/downloads.ts`)
-Manages the download queue. Key actions:
-- `startDownload(video, profileUsername, profileUrl)` — enqueues and starts download
-- `retryDownload(id)` — re-runs a failed item
-- `removeDownload(id)` — removes from history
+Manages the download queue, concurrency, and performance. Key features:
+- **Priority Queue**: `high` tier (user-initiated retries/single downloads) and `low` tier (bulk "Download All")
+- **Worker Pool**: Limits simultaneous downloads via `concurrentDownloads` setting
+- **Deduplication**: Prevents duplicate enqueuing of the same video
+- **Backoff**: Detects HTTP 429 and applies exponential backoff (5s to 2min) to the queue
+- **Performance**: Uses `itemsMap` for $O(1)$ lookups and targeted selectors to minimize re-renders
+
+Key actions:
+- `startDownload(video, profileUsername, profileUrl, priority)` — enqueues and triggers queue processing
+- `retryDownload(id)` — resets status to `pending`, sets priority to `high`, and triggers processing
+- `removeDownload(id)` — removes from history and triggers processing
+- `processQueue()` — starts the next `pending` download if active downloads are below `concurrentDownloads` limit
 
 On `status === 'done'`, automatically calls `useProfilesStore.getState().markVideoDownloaded(username, videoId)`.
 
@@ -111,21 +121,39 @@ Persists app settings to MMKV (`tik-down-settings`).
 - `getDownloadDir()` — returns either SAF URI (`content://…`) or `documentDirectory/TikDown/`
 - `pickDownloadDir()` — opens Android SAF folder picker
 - `resetDownloadDir()` — reverts to app documents
+- `concurrentDownloads` — user setting for maximum simultaneous downloads (1-5)
+
+## Data Fetching & Caching
+
+The app uses a hybrid architecture for managing external data:
+- **TanStack React Query**: Owns the fetch lifecycle (loading/error states), in-memory caching, and automated invalidation (e.g., refreshing a profile).
+- **Zustand (`useProfilesStore`)**: Acts as the "Persistence Sink." React Query hooks (`useProfileQuery`) automatically pipe successful results into the Zustand store via the `saveProfile` action to ensure data survives app restarts via MMKV.
+
+This separation ensures the UI is highly responsive (via React Query) while remaining fully functional offline with previously fetched data (via Zustand + MMKV).
 
 ## Download Flow
 
 ```
 startDownload(video)
-  → getDownloadUrl(webpageUrl)          # axios POST to tikdownloader.io, parses HTML for direct URL
-  → downloadVideo(url, filename, dir)   # expo-file-system createDownloadResumable
-      → SAF path (content://): cache → createFileAsync → copyAsync (fallback: base64) → delete cache
-      → Normal path: stream directly to documentDirectory/TikDown/
-  → markVideoDownloaded(username, id)   # persisted to profile store
+  → add to items with status: 'pending'
+  → processQueue()
+      → if activeCount < concurrentDownloads:
+          → runDownload(item)
+              → getDownloadUrl(webpageUrl)          # axios POST to tikdownloader.io, parses HTML for direct URL
+              → downloadVideo(url, filename, dir)   # expo-file-system createDownloadResumable
+                  → SAF path (content://): check existing subDir → cache → createFileAsync → copyAsync (fallback: base64) → delete cache
+                  → Normal path: stream directly to documentDirectory/TikDown/
+              → markVideoDownloaded(username, id)   # persisted to profile store
+              → processQueue()                      # trigger next in line
 ```
 
 ## Android Storage
 
 The app uses Android Storage Access Framework (SAF) for user-chosen folders. SAF URIs start with `content://` and require `StorageAccessFramework.createFileAsync`.
+
+**Subdirectory Reuse**: `lib/download.ts` uses `readDirectoryAsync` to scan for existing profile folders before creating new ones, preventing directory duplication when downloading from the same account.
+
+**SAF Write Mutex**: Implements a per-directory lock (`safWriteLocks`) to prevent concurrent writes to the same SAF folder from blocking the JavaScript thread during Base64 transfers.
 
 **Reliability Note**: `FileSystem.copyAsync` is known to fail with SAF URIs on some Android versions (throwing "directory cannot be created"). `lib/download.ts` handles this by falling back to a `Base64` transfer (`readAsStringAsync` -> `writeAsStringAsync`), which is slower but 100% reliable for SAF.
 
@@ -133,8 +161,15 @@ The app uses Android Storage Access Framework (SAF) for user-chosen folders. SAF
 
 - **Persistence**: All store data is persisted via `react-native-mmkv`. Manual file-based JSON storage (storage.ts) is deprecated.
 - **Type Checking**: Always use `tsgo` for TypeScript verification. It is provided by `@typescript/native-preview` and is optimized for this project's native stack.
-- **Performance**: Use `FlashList` for all long lists and `Image` from `expo-image` for all thumbnails to ensure smooth UI transitions and memory efficiency.
+- **Performance**: 
+    - Use `FlashList` and `expo-image` for lists.
+    - **Targeted Selectors**: Subscribe components to specific store keys (e.g., `s.itemsMap[id]`) instead of the whole store to prevent list-wide re-renders during progress updates.
+    - **Memoization**: Wrap card components in `React.memo`.
 - **Auto-Logging**: All critical operations in `lib/` and `src/store/` must use the global `Logger`. Errors and warnings are automatically surfaced in the global `LogsBottomSheet`.
+- **Validation**:
+    - **History Detail**: Pull-to-refresh verifies file existence and offers a manual retry if missing.
+    - **Profile View**: Pull-to-refresh bulk-validates all downloaded videos for that profile and automatically re-queues missing ones.
+    - **List Cards**: Tapping the "Downloaded" status pill in `VideoCard` or `DownloadCard` triggers a manual verification alert.
 - **Deduplication**: The Home screen `AllTab` and `AccountsTab` deduplicate entries by `videoId`. History only shows the most recent download for a specific video.
 - **External Playback**: The `HistoryDetailScreen` uses `IntentLauncher` (Android) and `Sharing` (iOS) to hand off video playback to the system's native player.
 - **expo-file-system imports**: always use `expo-file-system/legacy` (SDK 55 moved the old API there)
@@ -142,8 +177,14 @@ The app uses Android Storage Access Framework (SAF) for user-chosen folders. SAF
 - **Nested Pressables**: used for download buttons inside tappable cards — React Native handles propagation correctly, inner press does not bubble to outer
 - **Zustand outside React**: use `useStore.getState()` (e.g., `useSettingsStore.getState().getDownloadDir()`). Note that stores hydrate asynchronously on startup; use `onRehydrateStorage` for startup logic.
 - **Backend**: profile data is fetched from `https://tik-down-backend.vercel.app/tiktok?u=<username>&limit=<n>` as NDJSON (one `VideoPost` JSON object per line)
-- **Floating action button**: Uses `expo-fab` (integrated implementation) for an animated, menu-style FAB with backdrop blur. Dragging has been removed in favor of a consistent fixed position.
+- **Floating action button**: `src/components/global-fab.tsx` — animated menu-style FAB with backdrop blur. Draggable when collapsed via `Gesture.Exclusive(pan, tap)` from `react-native-gesture-handler`; snaps to nearest horizontal edge on release. When expanded, animates to a fixed full-width position regardless of drag position.
 - **Bottom Sheets**: Uses `@gorhom/bottom-sheet`. The global `LogsBottomSheet` uses `BottomSheetModal` which requires `BottomSheetModalProvider` at the root (`_layout.tsx`).
+
+## Sub-Agent Guides
+
+For granular implementation details of specific layers, refer to:
+- [Library Guide](./lib/AGENTS.md) — API, Download engine, SAF Mutex, and Validators.
+- [Store Guide](./src/store/AGENTS.md) — Zustand architecture, Queue logic, and Performance optimizations.
 
 ## Running Locally
 

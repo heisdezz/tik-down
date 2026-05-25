@@ -1,8 +1,33 @@
 import axios from "axios";
 import * as FileSystem from "expo-file-system/legacy";
+import { createMMKV } from "react-native-mmkv";
 import Logger from "@/lib/logger";
 
 const API_ENDPOINT = "https://tikdownloader.io/api/ajaxSearch";
+
+const urlCache = createMMKV({ id: "tik-down-url-cache" });
+const URL_CACHE_TTL = 6 * 60 * 60 * 1000; // 6 hours
+
+function getCachedUrl(tiktokUrl: string): string | null {
+  const raw = urlCache.getString(tiktokUrl);
+  if (!raw) return null;
+  const { url, expiresAt } = JSON.parse(raw) as {
+    url: string;
+    expiresAt: number;
+  };
+  if (Date.now() > expiresAt) {
+    urlCache.remove(tiktokUrl);
+    return null;
+  }
+  return url;
+}
+
+function setCachedUrl(tiktokUrl: string, resolvedUrl: string): void {
+  urlCache.set(
+    tiktokUrl,
+    JSON.stringify({ url: resolvedUrl, expiresAt: Date.now() + URL_CACHE_TTL }),
+  );
+}
 
 async function ensureDir(dir: string): Promise<void> {
   if (dir.startsWith("content://")) return;
@@ -21,6 +46,11 @@ async function ensureDir(dir: string): Promise<void> {
 }
 
 export async function getDownloadUrl(tiktokUrl: string): Promise<string> {
+  const cached = getCachedUrl(tiktokUrl);
+  if (cached) {
+    Logger.debug("URL cache hit", { tiktokUrl });
+    return cached;
+  }
   Logger.info("Extracting download URL", { tiktokUrl });
   try {
     const { data } = await axios.post<{ status: string; data: string }>(
@@ -48,16 +78,28 @@ export async function getDownloadUrl(tiktokUrl: string): Promise<string> {
     const hdMatch = html.match(
       /href="([^"]+)"[^>]*>[^<]*<i[^>]*><\/i>[^<]*Download MP4 HD/,
     );
-    if (hdMatch?.[1]) return hdMatch[1].replace(/&amp;/g, "&");
+    if (hdMatch?.[1]) {
+      const url = hdMatch[1].replace(/&amp;/g, "&");
+      setCachedUrl(tiktokUrl, url);
+      return url;
+    }
 
     const snapMatches = [
       ...html.matchAll(/href="(https?:\/\/dl\.snapcdn[^"]+)"/g),
     ];
     const snapUrl = snapMatches.find((m) => !m[1].includes(".mp3"))?.[1];
-    if (snapUrl) return snapUrl.replace(/&amp;/g, "&");
+    if (snapUrl) {
+      const url = snapUrl.replace(/&amp;/g, "&");
+      setCachedUrl(tiktokUrl, url);
+      return url;
+    }
 
     const cdnMatch = html.match(/href="(https:\/\/v16[^"]+)"/);
-    if (cdnMatch?.[1]) return cdnMatch[1].replace(/&amp;/g, "&");
+    if (cdnMatch?.[1]) {
+      const url = cdnMatch[1].replace(/&amp;/g, "&");
+      setCachedUrl(tiktokUrl, url);
+      return url;
+    }
 
     Logger.warn("Regex failed to find a valid MP4 URL", { tiktokUrl });
     throw new Error("Could not extract download URL from response");
@@ -68,6 +110,19 @@ export async function getDownloadUrl(tiktokUrl: string): Promise<string> {
     });
     throw err;
   }
+}
+
+const safWriteLocks = new Set<string>();
+
+async function acquireLock(dir: string): Promise<void> {
+  while (safWriteLocks.has(dir)) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  safWriteLocks.add(dir);
+}
+
+function releaseLock(dir: string): void {
+  safWriteLocks.delete(dir);
 }
 
 export async function downloadVideo(
@@ -85,16 +140,33 @@ export async function downloadVideo(
   if (subDir) {
     if (isSAF) {
       try {
-        destDir = await FileSystem.StorageAccessFramework.makeDirectoryAsync(
-          baseDir,
-          subDir,
-        );
-        Logger.debug("Using SAF subdirectory", { destDir });
+        const files =
+          await FileSystem.StorageAccessFramework.readDirectoryAsync(baseDir);
+        const subDirName = subDir.replace(/\//g, "_"); // Sanitize
+
+        // Try to find existing directory
+        const existing = files.find((f) => {
+          const decoded = decodeURIComponent(f);
+          return (
+            decoded.endsWith(`/${subDirName}`) ||
+            decoded.endsWith(`/${subDirName}/`)
+          );
+        });
+
+        if (existing) {
+          destDir = existing;
+          Logger.debug("Using existing SAF subdirectory", { destDir });
+        } else {
+          destDir = await FileSystem.StorageAccessFramework.makeDirectoryAsync(
+            baseDir,
+            subDirName,
+          );
+          Logger.debug("Created new SAF subdirectory", { destDir });
+        }
       } catch (e) {
-        Logger.warn(
-          "Failed to create/get SAF subdirectory, falling back to base",
-          { error: (e as Error).message },
-        );
+        Logger.warn("Failed to manage SAF subdirectory, falling back to base", {
+          error: (e as Error).message,
+        });
       }
     } else {
       destDir = baseDir.endsWith("/")
@@ -130,6 +202,7 @@ export async function downloadVideo(
     }
 
     try {
+      await acquireLock(destDir);
       const safFileUri =
         await FileSystem.StorageAccessFramework.createFileAsync(
           destDir,
@@ -152,11 +225,14 @@ export async function downloadVideo(
           encoding: FileSystem.EncodingType.Base64,
         });
         Logger.debug("SAF Base64 transfer complete", { safFileUri });
+      } finally {
+        releaseLock(destDir);
       }
 
       FileSystem.deleteAsync(cacheFile, { idempotent: true }).catch(() => {});
       return safFileUri;
     } catch (err) {
+      releaseLock(destDir);
       Logger.error("SAF createFileAsync failed", {
         destDir,
         filename,

@@ -4,11 +4,12 @@ import * as IntentLauncher from "expo-intent-launcher";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import React from "react";
+import React, { useState, useCallback } from "react";
 import {
   Alert,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   Share,
   StyleSheet,
@@ -23,6 +24,7 @@ import { useDownloadsStore } from "@/store/downloads";
 import { DownloadStatus } from "@/types/download";
 import { Colors, Spacing } from "@/constants/theme";
 import Logger from "@/lib/logger";
+import { validateFileExists } from "@/lib/validator";
 
 const STATUS_COLOR: Record<DownloadStatus, string> = {
   pending: "#f59e0b",
@@ -49,6 +51,31 @@ export default function HistoryDetailScreen() {
   const item = useDownloadsStore((s) => s.items.find((i) => i.id === id));
   const retryDownload = useDownloadsStore((s) => s.retryDownload);
   const removeDownload = useDownloadsStore((s) => s.removeDownload);
+
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    if (!item?.localPath) return;
+    setRefreshing(true);
+    try {
+      const exists = await validateFileExists(item.localPath);
+      if (!exists && item.status === "done") {
+        Alert.alert(
+          "File Missing",
+          "The downloaded video file could not be found on your device. It may have been moved or deleted manually.",
+          [
+            { text: "OK" },
+            {
+              text: "Retry Download",
+              onPress: () => retryDownload(item.id),
+            },
+          ],
+        );
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  }, [item, retryDownload]);
 
   if (!item) {
     return (
@@ -145,7 +172,17 @@ export default function HistoryDetailScreen() {
         </Text>
       </View>
 
-      <ScrollView contentContainerStyle={tw`pb-12`}>
+      <ScrollView
+        contentContainerStyle={tw`pb-12`}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
         {item.thumbnail ? (
           <Image
             source={{ uri: item.thumbnail }}

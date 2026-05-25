@@ -1,4 +1,4 @@
-import { VideoPost } from './api';
+import { VideoPost } from "./api";
 
 export interface TikTokProfile {
   username: string;
@@ -15,6 +15,7 @@ export interface ProfilesStore {
   errors: Record<string, string | null>;
   hydrate: () => Promise<void>;
   fetchProfile: (rawUsername: string) => Promise<string>;
+  saveProfile: (profile: TikTokProfile) => void;
   removeProfile: (username: string) => void;
   markVideoDownloaded: (username: string, videoId: string) => void;
 }

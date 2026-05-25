@@ -1,10 +1,11 @@
 import { FlashList } from "@shopify/flash-list";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import React from "react";
+import React, { useState, useCallback } from "react";
 import {
   ActivityIndicator,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   View,
@@ -17,6 +18,12 @@ import { useProfilesStore } from "@/store/profiles";
 import { Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { VideoCard } from "@/components/video-card";
+import { validateFileExists } from "@/lib/validator";
+import {
+  useProfileQuery,
+  useUpdateProfileMutation,
+} from "@/hooks/use-profile-query";
+import Logger from "@/lib/logger";
 
 const TypedFlashList = FlashList as any;
 
@@ -25,43 +32,77 @@ export default function ProfileScreen() {
   const router = useRouter();
   const colors = useTheme();
 
-  const { profiles, fetching, errors, fetchProfile } = useProfilesStore();
+  const {
+    data: profile,
+    isLoading,
+    error: queryError,
+  } = useProfileQuery(username);
+  const updateMutation = useUpdateProfileMutation();
   const startDownload = useDownloadsStore((s) => s.startDownload);
-  const downloadItems = useDownloadsStore((s) => s.items);
 
-  const profile = profiles.find((p) => p.username === username);
-  const isUpdating = fetching[username] ?? false;
-  const updateError = errors[username];
-
-  const pendingVideos = (profile?.videos ?? []).filter(
-    (v) =>
-      !(profile?.downloadedVideoIds ?? []).includes(v.id) &&
-      !downloadItems.some(
+  // Subscribe to ONLY items belonging to this profile for the count
+  const activeCount = useDownloadsStore(
+    (s) =>
+      s.items.filter(
         (i) =>
-          i.videoId === v.id &&
           i.profileUsername === username &&
           (i.status === "pending" ||
             i.status === "downloading" ||
             i.status === "fetching_url"),
-      ),
+      ).length,
   );
 
-  const activeCount = downloadItems.filter(
-    (i) =>
-      i.profileUsername === username &&
-      (i.status === "pending" ||
-        i.status === "downloading" ||
-        i.status === "fetching_url"),
-  ).length;
+  const pendingVideos = (profile?.videos ?? []).filter(
+    (v) => !(profile?.downloadedVideoIds ?? []).includes(v.id),
+  );
 
   function handleDownloadAll() {
     if (!profile) return;
     for (const video of pendingVideos) {
-      startDownload(video, profile.username, profile.url);
+      startDownload(video, profile.username, profile.url, "low");
     }
   }
 
-  if (!profile && !isUpdating) {
+  const onRefresh = useCallback(async () => {
+    try {
+      await updateMutation.mutateAsync(username);
+
+      // Validate existing downloads in the background
+      const { itemsMap, retryDownload } = useDownloadsStore.getState();
+      const profileItems = Object.values(itemsMap).filter(
+        (i) => i.profileUsername === username && i.status === "done",
+      );
+
+      for (const item of profileItems) {
+        if (item.localPath) {
+          const exists = await validateFileExists(item.localPath);
+          if (!exists) {
+            retryDownload(item.id); // Automatically requeue if missing
+          }
+        }
+      }
+    } catch (e) {
+      Logger.error("Manual refresh failed", { error: (e as Error).message });
+    }
+  }, [username, updateMutation]);
+
+  if (!profile && isLoading) {
+    return (
+      <SafeAreaView
+        style={[
+          tw`flex-1 items-center justify-center`,
+          { backgroundColor: colors.background },
+        ]}
+      >
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[tw`mt-4`, { color: colors.textSecondary }]}>
+          Loading profile...
+        </Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (!profile && !isLoading) {
     return (
       <SafeAreaView
         style={[
@@ -70,6 +111,11 @@ export default function ProfileScreen() {
         ]}
       >
         <Text style={{ color: colors.textSecondary }}>Profile not found</Text>
+        {queryError && (
+          <Text style={[tw`mt-2 text-xs`, { color: "#ef4444" }]}>
+            {(queryError as Error).message}
+          </Text>
+        )}
       </SafeAreaView>
     );
   }
@@ -77,6 +123,8 @@ export default function ProfileScreen() {
   const allDone = profile
     ? pendingVideos.length === 0 && activeCount === 0
     : false;
+
+  const refreshing = updateMutation.isPending;
 
   return (
     <SafeAreaView style={[tw`flex-1`, { backgroundColor: colors.background }]}>
@@ -103,17 +151,17 @@ export default function ProfileScreen() {
           )}
         </View>
         <Pressable
-          onPress={() => fetchProfile(username)}
-          disabled={isUpdating}
+          onPress={() => onRefresh()}
+          disabled={refreshing}
           style={({ pressed }) => [
             tw`px-3 py-2 rounded-xl`,
             {
               backgroundColor: colors.backgroundElement,
-              opacity: pressed || isUpdating ? 0.6 : 1,
+              opacity: pressed || refreshing ? 0.6 : 1,
             },
           ]}
         >
-          {isUpdating ? (
+          {refreshing ? (
             <ActivityIndicator size="small" color={colors.primary} />
           ) : (
             <Text style={[tw`text-xs font-bold`, { color: colors.primary }]}>
@@ -170,39 +218,25 @@ export default function ProfileScreen() {
         </View>
       )}
 
-      {updateError && (
-        <View
-          style={[
-            tw`mx-4 my-2 px-4 py-3 rounded-xl`,
-            { backgroundColor: colors.backgroundElement },
-          ]}
-        >
-          <Text style={[tw`text-xs font-semibold`, { color: "#E97B8E" }]}>
-            {updateError}
-          </Text>
-        </View>
-      )}
-
-      {isUpdating && !profile && (
-        <View style={tw`flex-1 items-center justify-center gap-3`}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[tw`text-sm`, { color: colors.textSecondary }]}>
-            Fetching profile…
-          </Text>
-        </View>
-      )}
-
       {profile && (
         <TypedFlashList
           data={profile.videos}
           keyExtractor={(v: any) => v.id}
           estimatedItemSize={120}
           contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
           ItemSeparatorComponent={() => (
             <View style={{ height: Spacing.two }} />
           )}
           ListHeaderComponent={
-            isUpdating ? (
+            refreshing ? (
               <View style={tw`flex-row items-center gap-2 px-1 pb-2`}>
                 <ActivityIndicator size="small" color={colors.primary} />
                 <Text style={[tw`text-xs`, { color: colors.textSecondary }]}>

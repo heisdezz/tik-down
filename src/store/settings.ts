@@ -8,6 +8,7 @@ import { mmkvStorage } from "@/lib/mmkv";
 interface SettingsData {
   downloadDirUri: string | null;
   hasAskedStorage: boolean;
+  concurrentDownloads: number;
 }
 
 interface SettingsStore extends SettingsData {
@@ -16,6 +17,7 @@ interface SettingsStore extends SettingsData {
   pickDownloadDir: () => Promise<boolean>;
   resetDownloadDir: () => Promise<void>;
   getDownloadDir: () => string;
+  setConcurrentDownloads: (count: number) => void;
 }
 
 function defaultDir(): string {
@@ -27,6 +29,7 @@ export const useSettingsStore = create<SettingsStore>()(
     (set, get) => ({
       downloadDirUri: null,
       hasAskedStorage: false,
+      concurrentDownloads: 2,
       loaded: false,
 
       load: async () => {
@@ -77,6 +80,10 @@ export const useSettingsStore = create<SettingsStore>()(
 
       getDownloadDir: () => {
         return get().downloadDirUri ?? defaultDir();
+      },
+
+      setConcurrentDownloads: (count) => {
+        set({ concurrentDownloads: Math.max(1, Math.min(5, count)) });
       },
     }),
     {

@@ -5,11 +5,14 @@ import {
   useColorScheme,
   View,
   Pressable,
+  Alert,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { DownloadItem, DownloadStatus } from "@/types/download";
 import { Colors, Spacing } from "@/constants/theme";
+import { validateFileExists } from "@/lib/validator";
+import { useDownloadsStore } from "@/store/downloads";
 
 export const STATUS_COLOR: Record<DownloadStatus, string> = {
   pending: "#f59e0b",
@@ -36,6 +39,20 @@ export function DownloadCard({
 }) {
   const scheme = useColorScheme();
   const colors = Colors[scheme === "dark" ? "dark" : "light"];
+  const retryDownload = useDownloadsStore((s) => s.retryDownload);
+
+  const handleValidate = async () => {
+    if (!item.localPath) return;
+    const exists = await validateFileExists(item.localPath);
+    if (!exists) {
+      Alert.alert("File Missing", "The file is missing from the device.", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Re-download", onPress: () => retryDownload(item.id) },
+      ]);
+    } else {
+      Alert.alert("File Verified", "The file is safely stored on your device.");
+    }
+  };
 
   return (
     <Pressable
@@ -88,10 +105,14 @@ export function DownloadCard({
         </Text>
 
         <View style={styles.footer}>
-          <View
-            style={[
+          <Pressable
+            onPress={item.status === "done" ? handleValidate : undefined}
+            style={({ pressed }) => [
               styles.statusPill,
-              { backgroundColor: STATUS_COLOR[item.status] + "20" },
+              {
+                backgroundColor: STATUS_COLOR[item.status] + "20",
+                opacity: pressed && item.status === "done" ? 0.7 : 1,
+              },
             ]}
           >
             <View
@@ -108,7 +129,7 @@ export function DownloadCard({
                 ? ` ${Math.round(item.progress * 100)}%`
                 : ""}
             </Text>
-          </View>
+          </Pressable>
 
           {item.status === "done" && (
             <Ionicons

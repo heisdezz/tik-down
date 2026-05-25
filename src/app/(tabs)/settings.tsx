@@ -79,8 +79,13 @@ export default function SettingsScreen() {
   const removeDownload = useDownloadsStore((s) => s.removeDownload);
 
   const [showFolderModal, setShowFolderModal] = useState(false);
-  const { downloadDirUri, pickDownloadDir, resetDownloadDir } =
-    useSettingsStore();
+  const {
+    downloadDirUri,
+    pickDownloadDir,
+    resetDownloadDir,
+    concurrentDownloads,
+    setConcurrentDownloads,
+  } = useSettingsStore();
 
   const downloadDirLabel = parseDownloadDirLabel(downloadDirUri);
 
@@ -109,6 +114,11 @@ export default function SettingsScreen() {
 
   function handleChangeDownloadDir() {
     setShowFolderModal(true);
+  }
+
+  function handleCycleConcurrent() {
+    const next = concurrentDownloads >= 5 ? 1 : concurrentDownloads + 1;
+    setConcurrentDownloads(next);
   }
 
   function clearDownloads() {
@@ -172,6 +182,24 @@ export default function SettingsScreen() {
               ]}
             />
             <SettingRow label="Failed" value={String(failedCount)} />
+          </View>
+        </View>
+
+        <View style={tw`gap-2`}>
+          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>
+            DOWNLOADS
+          </Text>
+          <View
+            style={[
+              styles.group,
+              { backgroundColor: colors.backgroundElement },
+            ]}
+          >
+            <SettingRow
+              label="Concurrent downloads"
+              value={`${concurrentDownloads} videos`}
+              onPress={handleCycleConcurrent}
+            />
           </View>
         </View>
 

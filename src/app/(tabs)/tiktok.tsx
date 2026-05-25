@@ -18,6 +18,8 @@ import { Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { ProfileCard } from "@/components/profile-card";
 
+import { useUpdateProfileMutation } from "@/hooks/use-profile-query";
+
 const TypedFlashList = FlashList as any;
 
 export default function TikTokScreen() {
@@ -26,29 +28,28 @@ export default function TikTokScreen() {
   const inputRef = useRef<TextInput>(null);
 
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [fetchError, setFetchError] = useState<string | null>(null);
+  const updateMutation = useUpdateProfileMutation();
 
-  const { profiles, fetchProfile, removeProfile } = useProfilesStore();
+  const { profiles, removeProfile } = useProfilesStore();
 
   async function handleFetch() {
     const raw = input.trim();
-    if (!raw || loading) return;
+    if (!raw || updateMutation.isPending) return;
     inputRef.current?.blur();
-    setLoading(true);
-    setFetchError(null);
+
     try {
-      const username = await fetchProfile(raw);
+      const username = await updateMutation.mutateAsync(raw);
       setInput("");
       router.push(`/profile/${username}`);
     } catch (err) {
-      setFetchError(
-        err instanceof Error ? err.message : "Failed to fetch profile",
-      );
-    } finally {
-      setLoading(false);
+      // Error is already logged in the mutation or store
     }
   }
+
+  const fetchError = updateMutation.error
+    ? (updateMutation.error as Error).message
+    : null;
+  const loading = updateMutation.isPending;
 
   return (
     <SafeAreaView style={[tw`flex-1`, { backgroundColor: colors.background }]}>

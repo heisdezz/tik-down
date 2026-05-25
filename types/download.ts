@@ -1,4 +1,9 @@
-export type DownloadStatus = 'pending' | 'fetching_url' | 'downloading' | 'done' | 'failed';
+export type DownloadStatus =
+  | "pending"
+  | "fetching_url"
+  | "downloading"
+  | "done"
+  | "failed";
 
 export interface DownloadItem {
   id: string;
@@ -9,6 +14,7 @@ export interface DownloadItem {
   thumbnail?: string;
   webpageUrl: string;
   status: DownloadStatus;
+  priority: "high" | "low";
   progress?: number;
   localPath?: string;
   error?: string;

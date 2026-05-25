@@ -36,23 +36,16 @@ export const useProfilesStore = create<ProfilesStore>()(
             videos.push(video);
           });
 
-          set((s) => {
-            const existing = s.profiles.find((p) => p.username === username);
-            // Preserve downloadedVideoIds across refresh
-            const profile: TikTokProfile = {
-              username,
-              url,
-              videos,
-              fetchedAt: Date.now(),
-              downloadedVideoIds: existing?.downloadedVideoIds ?? [],
-            };
-            const idx = s.profiles.findIndex((p) => p.username === username);
-            const updated =
-              idx >= 0
-                ? s.profiles.map((p) => (p.username === username ? profile : p))
-                : [profile, ...s.profiles];
-            return { profiles: updated };
-          });
+          const existing = get().profiles.find((p) => p.username === username);
+          const profile: TikTokProfile = {
+            username,
+            url,
+            videos,
+            fetchedAt: Date.now(),
+            downloadedVideoIds: existing?.downloadedVideoIds ?? [],
+          };
+
+          get().saveProfile(profile);
 
           Logger.info("Profile data fetched successfully", {
             username,
@@ -72,6 +65,21 @@ export const useProfilesStore = create<ProfilesStore>()(
         } finally {
           set((s) => ({ fetching: { ...s.fetching, [username]: false } }));
         }
+      },
+
+      saveProfile: (profile) => {
+        set((s) => {
+          const idx = s.profiles.findIndex(
+            (p) => p.username === profile.username,
+          );
+          const updated =
+            idx >= 0
+              ? s.profiles.map((p) =>
+                  p.username === profile.username ? profile : p,
+                )
+              : [profile, ...s.profiles];
+          return { profiles: updated };
+        });
       },
 
       removeProfile: (username) => {
