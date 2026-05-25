@@ -9,6 +9,8 @@ import { DownloadCard } from "@/components/download-card";
 import { Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 
+const TypedFlashList = FlashList as any;
+
 export function AllTab() {
   const items = useDownloadsStore((s) => s.items);
   const router = useRouter();
@@ -53,7 +55,7 @@ export function AllTab() {
 
   return (
     <View style={styles.container}>
-      <FlashList
+      <TypedFlashList
         data={uniqueItems}
         keyExtractor={(i: any) => i.id}
         estimatedItemSize={90}

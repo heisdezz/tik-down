@@ -18,6 +18,8 @@ import { Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { ProfileCard } from "@/components/profile-card";
 
+const TypedFlashList = FlashList as any;
+
 export default function TikTokScreen() {
   const colors = useTheme();
   const router = useRouter();
@@ -148,7 +150,7 @@ export default function TikTokScreen() {
               Saved Profiles · {profiles.length}
             </Text>
           </View>
-          <FlashList
+          <TypedFlashList
             data={profiles}
             keyExtractor={(p: any) => p.username}
             estimatedItemSize={100}

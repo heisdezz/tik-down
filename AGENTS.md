@@ -129,6 +129,7 @@ The app uses Android Storage Access Framework (SAF) for user-chosen folders. SAF
 
 ## Key Conventions
 
+- **Type Checking**: Always use `tsgo` for TypeScript verification. It is provided by `@typescript/native-preview` and is optimized for this project's native stack.
 - **Performance**: Use `FlashList` for all long lists and `Image` from `expo-image` for all thumbnails to ensure smooth UI transitions and memory efficiency.
 - **Auto-Logging**: All critical operations in `lib/` and `src/store/` must use the global `Logger`. Errors and warnings are automatically surfaced in the global `LogsBottomSheet`.
 - **Deduplication**: The Home screen `AllTab` and `AccountsTab` deduplicate entries by `videoId`. History only shows the most recent download for a specific video.
@@ -152,5 +153,5 @@ bun run web
 
 TypeScript check:
 ```bash
-bunx tsc --noEmit
+bunx tsgo --noEmit
 ```

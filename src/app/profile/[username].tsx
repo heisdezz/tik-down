@@ -1,5 +1,4 @@
 import { FlashList } from "@shopify/flash-list";
-import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
@@ -15,212 +14,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import tw from "@/lib/tw";
 import { useDownloadsStore } from "@/store/downloads";
 import { useProfilesStore } from "@/store/profiles";
-import { VideoPost } from "@/types/api";
-import { DownloadItem } from "@/types/download";
 import { Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
+import { VideoCard } from "@/components/video-card";
 
-function formatDuration(secs?: number): string {
-  if (!secs) return "";
-  const m = Math.floor(secs / 60);
-  const s = Math.floor(secs % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
-
-function formatCount(n?: number): string {
-  if (n == null) return "";
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
-}
-
-function VideoStatusButton({
-  item,
-  isDone,
-  onDownload,
-  onRetry,
-  colors,
-}: {
-  item: DownloadItem | undefined;
-  isDone: boolean;
-  onDownload: () => void;
-  onRetry: () => void;
-  colors: any;
-}) {
-  if (isDone) {
-    return (
-      <View
-        style={[
-          styles.statusBtn,
-          { backgroundColor: colors.backgroundSelected },
-        ]}
-      >
-        <Ionicons name="checkmark-circle" size={13} color="#72C9A3" />
-        <Text style={[tw`text-xs font-bold`, { color: "#72C9A3" }]}>
-          Downloaded
-        </Text>
-      </View>
-    );
-  }
-
-  if (!item) {
-    return (
-      <Pressable
-        onPress={onDownload}
-        style={({ pressed }) => [
-          styles.statusBtn,
-          { backgroundColor: colors.primary, opacity: pressed ? 0.8 : 1 },
-        ]}
-      >
-        <Ionicons name="arrow-down-outline" size={13} color="#fff" />
-        <Text style={[tw`text-xs font-bold`, { color: "#fff" }]}>Download</Text>
-      </Pressable>
-    );
-  }
-
-  if (item.status === "failed") {
-    return (
-      <Pressable
-        onPress={onRetry}
-        style={({ pressed }) => [
-          styles.statusBtn,
-          {
-            backgroundColor: colors.backgroundSelected,
-            opacity: pressed ? 0.8 : 1,
-          },
-        ]}
-      >
-        <Ionicons name="refresh-outline" size={13} color="#E97B8E" />
-        <Text style={[tw`text-xs font-bold`, { color: "#E97B8E" }]}>Retry</Text>
-      </Pressable>
-    );
-  }
-
-  if (item.status === "fetching_url") {
-    return (
-      <View
-        style={[
-          styles.statusBtn,
-          { backgroundColor: colors.backgroundSelected },
-        ]}
-      >
-        <ActivityIndicator
-          size="small"
-          color={colors.primary}
-          style={{ transform: [{ scale: 0.7 }] }}
-        />
-        <Text style={[tw`text-xs font-bold`, { color: colors.textSecondary }]}>
-          Getting URL…
-        </Text>
-      </View>
-    );
-  }
-
-  if (item.status === "pending") {
-    return (
-      <View
-        style={[
-          styles.statusBtn,
-          { backgroundColor: colors.backgroundSelected },
-        ]}
-      >
-        <Ionicons
-          name="hourglass-outline"
-          size={13}
-          color={colors.textSecondary}
-        />
-        <Text style={[tw`text-xs font-bold`, { color: colors.textSecondary }]}>
-          Queued
-        </Text>
-      </View>
-    );
-  }
-
-  // downloading
-  const pct = Math.round((item.progress ?? 0) * 100);
-  return (
-    <View
-      style={[
-        styles.progressBtn,
-        { backgroundColor: colors.backgroundSelected },
-      ]}
-    >
-      <View style={styles.progressBtnTrack}>
-        <View
-          style={[
-            styles.progressBtnFill,
-            { backgroundColor: colors.primary, width: `${pct}%` },
-          ]}
-        />
-      </View>
-      <Text style={[styles.progressBtnLabel, { color: colors.primary }]}>
-        {pct}%
-      </Text>
-    </View>
-  );
-}
-
-function VideoCard({
-  video,
-  username,
-  profileUrl,
-  downloadedVideoIds,
-}: {
-  video: VideoPost;
-  username: string;
-  profileUrl: string;
-  downloadedVideoIds: string[];
-}) {
-  const colors = useTheme();
-  const startDownload = useDownloadsStore((s) => s.startDownload);
-  const retryDownload = useDownloadsStore((s) => s.retryDownload);
-  const items = useDownloadsStore((s) => s.items);
-
-  const item = items.find(
-    (i) => i.videoId === video.id && i.profileUsername === username,
-  );
-  const isDone =
-    downloadedVideoIds.includes(video.id) || item?.status === "done";
-
-  const thumbnail = video.thumbnails?.at(-1)?.url ?? video.thumbnail;
-
-  return (
-    <View style={[styles.card, { backgroundColor: colors.backgroundElement }]}>
-      <Image
-        source={{ uri: thumbnail }}
-        style={styles.thumb}
-        contentFit="cover"
-      />
-      <View style={styles.cardBody}>
-        <Text
-          style={[styles.cardTitle, { color: colors.text }]}
-          numberOfLines={3}
-        >
-          {video.title || "Untitled"}
-        </Text>
-        <View style={tw`flex-row gap-3`}>
-          {video.duration != null && (
-            <Text style={[styles.meta, { color: colors.textSecondary }]}>
-              {formatDuration(video.duration)}
-            </Text>
-          )}
-          {video.view_count != null && (
-            <Text style={[styles.meta, { color: colors.textSecondary }]}>
-              {formatCount(video.view_count)} views
-            </Text>
-          )}
-        </View>
-        <VideoStatusButton
-          item={item}
-          isDone={isDone}
-          onDownload={() => startDownload(video, username, profileUrl)}
-          onRetry={() => item && retryDownload(item.id)}
-          colors={colors}
-        />
-      </View>
-    </View>
-  );
-}
+const TypedFlashList = FlashList as any;
 
 export default function ProfileScreen() {
   const { username } = useLocalSearchParams<{ username: string }>();
@@ -395,7 +193,7 @@ export default function ProfileScreen() {
       )}
 
       {profile && (
-        <FlashList
+        <TypedFlashList
           data={profile.videos}
           keyExtractor={(v: any) => v.id}
           estimatedItemSize={120}
@@ -429,52 +227,4 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   list: { padding: Spacing.three },
-  card: {
-    flexDirection: "row",
-    borderRadius: 12,
-    overflow: "hidden",
-    gap: Spacing.two,
-  },
-  thumb: { width: 100, height: 120 },
-  cardBody: {
-    flex: 1,
-    padding: Spacing.two,
-    gap: 6,
-    justifyContent: "space-between",
-  },
-  cardTitle: { fontSize: 13, fontWeight: "600", lineHeight: 18 },
-  meta: { fontSize: 11 },
-  statusBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 4,
-    marginTop: 2,
-    paddingVertical: 7,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-  },
-  progressBtn: {
-    marginTop: 2,
-    paddingVertical: 7,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  progressBtnTrack: {
-    flex: 1,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "rgba(0,0,0,0.1)",
-    overflow: "hidden",
-  },
-  progressBtnFill: { height: "100%", borderRadius: 2 },
-  progressBtnLabel: {
-    fontSize: 10,
-    fontWeight: "700",
-    minWidth: 28,
-    textAlign: "right",
-  },
 });
