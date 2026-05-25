@@ -125,11 +125,13 @@ Persists app settings to MMKV (`tik-down-settings`).
 
 ## Data Fetching & Caching
 
-The app uses a hybrid architecture for managing external data:
-- **TanStack React Query**: Owns the fetch lifecycle (loading/error states), in-memory caching, and automated invalidation (e.g., refreshing a profile).
-- **Zustand (`useProfilesStore`)**: Acts as the "Persistence Sink." React Query hooks (`useProfileQuery`) automatically pipe successful results into the Zustand store via the `saveProfile` action to ensure data survives app restarts via MMKV.
+The app uses a layered caching architecture:
 
-This separation ensures the UI is highly responsive (via React Query) while remaining fully functional offline with previously fetched data (via Zustand + MMKV).
+- **TanStack React Query**: Owns the fetch lifecycle (loading/error states), in-memory caching, and automated invalidation for *profile data* (video listings from the backend).
+- **Zustand (`useProfilesStore`)**: Acts as the "Persistence Sink." React Query hooks (`useProfileQuery`) automatically pipe successful results into the Zustand store via the `saveProfile` action to ensure data survives app restarts via MMKV.
+- **URL Cache (`tik-down-url-cache` MMKV instance)**: Caches resolved CDN download URLs from tikdownloader.io with a 6-hour TTL. Keyed by TikTok page URL. On a cache hit `getDownloadUrl` returns immediately without a network call — retries of the same video are near-instant and don't contribute to rate limit exposure.
+
+Each cache layer is an independent MMKV instance with no key overlap.
 
 ## Download Flow
 
@@ -139,7 +141,9 @@ startDownload(video)
   → processQueue()
       → if activeCount < concurrentDownloads:
           → runDownload(item)
-              → getDownloadUrl(webpageUrl)          # axios POST to tikdownloader.io, parses HTML for direct URL
+              → getDownloadUrl(webpageUrl)
+                  → cache hit (TTL 6h)?  → return cached CDN URL immediately
+                  → cache miss           → axios POST to tikdownloader.io, parse HTML → cache result
               → downloadVideo(url, filename, dir)   # expo-file-system createDownloadResumable
                   → SAF path (content://): check existing subDir → cache → createFileAsync → copyAsync (fallback: base64) → delete cache
                   → Normal path: stream directly to documentDirectory/TikDown/
