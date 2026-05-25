@@ -1,129 +1,325 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { Ionicons } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
+import React from "react";
 import {
-  Animated,
   Dimensions,
-  Modal,
-  PanResponder,
-  Pressable,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
-} from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useTheme } from '@/hooks/use-theme';
-import { openLogsSheet } from '@/components/logs-bottom-sheet';
-import { useRouter } from 'expo-router';
+  useColorScheme,
+} from "react-native";
+import Animated, {
+  Easing,
+  FadeIn,
+  FadeOut,
+  SharedValue,
+  useAnimatedProps,
+  useAnimatedStyle,
+  useDerivedValue,
+  useSharedValue,
+  withDelay,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
+import { useTheme } from "@/hooks/use-theme";
+import { openLogsSheet } from "@/components/logs-bottom-sheet";
+import { useRouter } from "expo-router";
 
-const STORAGE_KEY = 'globalFabPosV1';
-const { width, height } = Dimensions.get('window');
+const AnimatedTouchableOpacity =
+  Animated.createAnimatedComponent(TouchableOpacity);
+const AnimatedView = Animated.createAnimatedComponent(View);
+const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
+const { width: screenWidth } = Dimensions.get("window");
+
+interface MenuItemProps {
+  icon: string;
+  title: string;
+  subtitle: string;
+  index: number;
+  isExpanded: SharedValue<boolean>;
+  onPress?: () => void;
+  colors: any;
+}
+
+const MenuItem: React.FC<MenuItemProps> = ({
+  icon,
+  title,
+  subtitle,
+  index,
+  isExpanded,
+  onPress,
+  colors,
+}) => {
+  const itemStyle = useAnimatedStyle(() => {
+    return {
+      opacity: isExpanded.value
+        ? withDelay(
+            100 + index * 30,
+            withTiming(1, {
+              duration: 150,
+              easing: Easing.out(Easing.ease),
+            }),
+          )
+        : withTiming(0, { duration: 100 }),
+      transform: [
+        {
+          translateY: isExpanded.value
+            ? withDelay(
+                100 + index * 30,
+                withTiming(0, {
+                  duration: 200,
+                  easing: Easing.out(Easing.back(0.5)),
+                }),
+              )
+            : withTiming(10, { duration: 150 }),
+        },
+      ],
+    };
+  });
+
+  return (
+    <AnimatedTouchableOpacity
+      style={[styles.menuItem, itemStyle]}
+      activeOpacity={0.7}
+      onPress={onPress}
+    >
+      <View
+        style={[
+          styles.menuItemIcon,
+          { backgroundColor: colors.backgroundSelected },
+        ]}
+      >
+        <Ionicons name={icon as any} size={24} color={colors.text} />
+      </View>
+      <View style={styles.menuItemContent}>
+        <Text style={[styles.menuItemTitle, { color: colors.text }]}>
+          {title}
+        </Text>
+        <Text
+          style={[styles.menuItemSubtitle, { color: colors.textSecondary }]}
+        >
+          {subtitle}
+        </Text>
+      </View>
+    </AnimatedTouchableOpacity>
+  );
+};
 
 export default function GlobalFab() {
   const router = useRouter();
   const colors = useTheme();
-  const pan = useRef(new Animated.ValueXY({ x: width - 80, y: height - 200 })).current;
-  const [menuVisible, setMenuVisible] = useState(false);
+  const colorScheme = useColorScheme();
+  const isExpanded = useSharedValue(false);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const val = await AsyncStorage.getItem(STORAGE_KEY);
-        if (val) {
-          const { x, y } = JSON.parse(val);
-          pan.setValue({ x, y });
-        }
-      } catch (e) {
-        // ignore
-      }
-    })();
-  }, [pan]);
+  const animatedOverlayOpacity = useDerivedValue(() =>
+    withTiming(isExpanded.value ? 1 : 0, { duration: 200 }),
+  );
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 2 || Math.abs(gesture.dy) > 2,
-      onPanResponderGrant: () => {
-        pan.setOffset({ x: (pan as any).x._value, y: (pan as any).y._value });
-        pan.setValue({ x: 0, y: 0 });
+  const backdropStyle = useAnimatedStyle(() => {
+    return {
+      opacity: animatedOverlayOpacity.value,
+    };
+  });
+
+  const backdropProps = useAnimatedProps(() => {
+    return {
+      pointerEvents: (isExpanded.value ? "auto" : "none") as any,
+    };
+  });
+
+  const containerStyle = useAnimatedStyle(() => {
+    const expandedWidth = screenWidth - 40;
+    const expandedHeight = 240;
+    const fabSize = 56;
+
+    return {
+      width: withTiming(isExpanded.value ? expandedWidth : fabSize, {
+        duration: 250,
+        easing: Easing.out(Easing.quad),
+      }),
+      height: withTiming(isExpanded.value ? expandedHeight : fabSize, {
+        duration: 250,
+        easing: Easing.out(Easing.quad),
+      }),
+      borderRadius: withTiming(isExpanded.value ? 20 : 28, {
+        duration: 250,
+      }),
+      bottom: withTiming(isExpanded.value ? 100 : 90, {
+        duration: 250,
+      }),
+      backgroundColor: isExpanded.value
+        ? colors.backgroundElement
+        : colors.primary,
+    };
+  });
+
+  const iconStyle = useAnimatedStyle(() => {
+    return {
+      opacity: withTiming(isExpanded.value ? 0 : 1, { duration: 150 }),
+      transform: [
+        {
+          rotate: withTiming(isExpanded.value ? "45deg" : "0deg", {
+            duration: 200,
+          }),
+        },
+      ],
+    };
+  });
+
+  const closeButtonStyle = useAnimatedStyle(() => {
+    return {
+      opacity: withTiming(isExpanded.value ? 1 : 0, { duration: 150 }),
+      transform: [
+        {
+          scale: withTiming(isExpanded.value ? 1 : 0.5, { duration: 150 }),
+        },
+      ],
+    };
+  });
+
+  const handlePress = () => {
+    isExpanded.value = !isExpanded.value;
+  };
+
+  const menuItems = [
+    {
+      icon: "list",
+      title: "Logs",
+      subtitle: "View application logs and debug info",
+      onPress: () => {
+        isExpanded.value = false;
+        openLogsSheet();
       },
-      onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false }),
-      onPanResponderRelease: async () => {
-        pan.flattenOffset();
-        const pos = { x: (pan as any).x._value, y: (pan as any).y._value };
-        try {
-          await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(pos));
-        } catch (e) {}
+    },
+    {
+      icon: "settings-outline",
+      title: "Settings",
+      subtitle: "Configure app behavior and storage",
+      onPress: () => {
+        isExpanded.value = false;
+        router.push("/(tabs)/settings");
       },
-    })
-  ).current;
-
-  function openLogs() {
-    setMenuVisible(false);
-    openLogsSheet();
-  }
-
-  function openSettings() {
-    setMenuVisible(false);
-    router.push('/(tabs)/settings');
-  }
+    },
+  ];
 
   return (
     <>
-      <Animated.View
-        style={[styles.fab, { transform: pan.getTranslateTransform() }]}
-        {...panResponder.panHandlers}
-        pointerEvents="box-none"
+      <AnimatedView
+        style={[styles.backdrop, backdropStyle]}
+        animatedProps={backdropProps}
       >
-        <Pressable
-          onPress={() => setMenuVisible(true)}
-          style={({ pressed }) => [styles.button, { backgroundColor: colors.primary }, pressed && { opacity: 0.8 }]}
+        <AnimatedBlurView
+          intensity={80}
+          style={StyleSheet.absoluteFill}
+          tint={colorScheme === "dark" ? "dark" : "light"}
         >
-          <Text style={[styles.plus, { color: colors.text }]}>≡</Text>
-        </Pressable>
-      </Animated.View>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            onPress={handlePress}
+            activeOpacity={1}
+          />
+        </AnimatedBlurView>
+      </AnimatedView>
 
-      <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
-        <Pressable style={styles.backdrop} onPress={() => setMenuVisible(false)}>
-          <View style={[styles.menu, { backgroundColor: colors.backgroundElement }]}>
-            <Pressable style={styles.menuItem} onPress={openLogs}>
-              <Text style={[styles.menuText, { color: colors.text }]}>Logs</Text>
-            </Pressable>
-            <Pressable style={styles.menuItem} onPress={openSettings}>
-              <Text style={[styles.menuText, { color: colors.text }]}>Settings</Text>
-            </Pressable>
-          </View>
-        </Pressable>
-      </Modal>
+      <AnimatedTouchableOpacity
+        style={[styles.container, containerStyle]}
+        onPress={handlePress}
+        activeOpacity={1}
+      >
+        <Animated.View style={[styles.iconContainer, iconStyle]}>
+          <Ionicons name="menu" size={24} color={colors.text} />
+        </Animated.View>
+
+        <Animated.View style={[styles.closeButton, closeButtonStyle]}>
+          <TouchableOpacity onPress={handlePress}>
+            <Ionicons name="close" size={24} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </Animated.View>
+
+        <View style={styles.expandedContent}>
+          {menuItems.map((item, index) => (
+            <MenuItem
+              key={index}
+              icon={item.icon}
+              title={item.title}
+              subtitle={item.subtitle}
+              index={index}
+              isExpanded={isExpanded}
+              onPress={item.onPress}
+              colors={colors}
+            />
+          ))}
+        </View>
+      </AnimatedTouchableOpacity>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  fab: {
-    position: 'absolute',
-    zIndex: 999,
-    elevation: 8,
-  },
-  button: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  plus: { color: 'white', fontSize: 24, fontWeight: '700' },
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.2)' },
-  menu: {
-    position: 'absolute',
+  container: {
+    position: "absolute",
     right: 20,
-    bottom: 100,
-    padding: 8,
-    borderRadius: 8,
-    minWidth: 140,
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+    zIndex: 1000,
+    overflow: "hidden",
   },
-  menuItem: { paddingVertical: 10, paddingHorizontal: 12 },
-  menuText: { fontSize: 16 },
+  iconContainer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  closeButton: {
+    position: "absolute",
+    top: 20,
+    right: 22,
+    width: 32,
+    height: 32,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  expandedContent: {
+    flex: 1,
+    paddingTop: 50,
+    paddingHorizontal: 20,
+  },
+  menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+  },
+  menuItemIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 20,
+  },
+  menuItemContent: {
+    flex: 1,
+  },
+  menuItemTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  menuItemSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "transparent",
+    zIndex: 998,
+  },
 });

@@ -12,6 +12,9 @@ TikTok video downloader built with Expo SDK 55 / React Native. Targets Android (
 | Styling | twrnc (Tailwind RN) + custom pastel palette |
 | HTTP | axios (API calls), expo-file-system (file downloads) |
 | Icons | `@expo/vector-icons` Ionicons — **not** expo-symbols (iOS-only) |
+| Images | `expo-image` (high-performance caching and transitions) |
+| Lists | `@shopify/flash-list` (recycling list for high performance) |
+| Sharing | `expo-sharing` (iOS playback/share), `expo-intent-launcher` (Android playback) |
 | Package manager | Bun |
 
 ## Path Aliases (critical)
@@ -46,15 +49,19 @@ tik-down/
 │   │   ├── _layout.tsx    # Root layout — hydrates all stores, first-launch storage prompt
 │   │   ├── (tabs)/
 │   │   │   ├── _layout.tsx      # Tab bar (Ionicons icons, pastel primary tint)
-│   │   │   ├── home.tsx         # Home / history tab
+│   │   │   ├── home.tsx         # Home tab — toggles between All and Accounts views
 │   │   │   ├── tiktok.tsx       # Profile search + saved profile list
 │   │   │   ├── instagram.tsx    # Instagram tab (stub)
 │   │   │   └── settings.tsx     # Stats, storage location, danger zone
 │   │   ├── profile/[username].tsx  # Profile detail — video list with per-video download status
 │   │   └── history/[id].tsx     # Download detail
 │   ├── components/
+│   │   ├── home/                # Home screen sub-views
+│   │   │   ├── all-tab.tsx      # List of all download history
+│   │   │   └── accounts-tab.tsx # Summarized list of downloaded-from accounts
+│   │   ├── download-card.tsx    # Reusable history item card with status/progress
 │   │   ├── profile-card.tsx     # Saved-profile row with aggregate download progress bar
-│   │   ├── folder-picker-modal.tsx  # Themed bottom-sheet for storage-dir selection
+│   │   ├── folder-picker-modal.tsx  # Themed modal for storage-dir selection (SAF support)
 │   │   └── ...                  # UI primitives (animated-icon, collapsible, etc.)
 │   ├── constants/theme.ts       # Colors (light/dark), Spacing, Fonts — imports palette from @/lib/tw
 │   ├── hooks/use-theme.ts       # useTheme() → Colors[scheme]
@@ -109,25 +116,30 @@ Persists fetched profiles to `documentDirectory/tik-down-profiles.json`.
 startDownload(video)
   → getDownloadUrl(webpageUrl)          # axios POST to tikdownloader.io, parses HTML for direct URL
   → downloadVideo(url, filename, dir)   # expo-file-system createDownloadResumable
-      → SAF path (content://): cache → createFileAsync → copyAsync → delete cache
+      → SAF path (content://): cache → createFileAsync → copyAsync (fallback: base64) → delete cache
       → Normal path: stream directly to documentDirectory/TikDown/
   → markVideoDownloaded(username, id)   # persisted to profile store
 ```
 
 ## Android Storage
 
-The app uses Android Storage Access Framework (SAF) for user-chosen folders. SAF URIs start with `content://` and require `StorageAccessFramework.createFileAsync` + `copyAsync` — direct writes are not possible.
+The app uses Android Storage Access Framework (SAF) for user-chosen folders. SAF URIs start with `content://` and require `StorageAccessFramework.createFileAsync`.
 
-On first launch `_layout.tsx` shows `<FolderPickerModal>` to let the user choose between app-documents and a custom folder.
+**Reliability Note**: `FileSystem.copyAsync` is known to fail with SAF URIs on some Android versions (throwing "directory cannot be created"). `lib/download.ts` handles this by falling back to a `Base64` transfer (`readAsStringAsync` -> `writeAsStringAsync`), which is slower but 100% reliable for SAF.
 
 ## Key Conventions
 
+- **Performance**: Use `FlashList` for all long lists and `Image` from `expo-image` for all thumbnails to ensure smooth UI transitions and memory efficiency.
+- **Auto-Logging**: All critical operations in `lib/` and `src/store/` must use the global `Logger`. Errors and warnings are automatically surfaced in the global `LogsBottomSheet`.
+- **Deduplication**: The Home screen `AllTab` and `AccountsTab` deduplicate entries by `videoId`. History only shows the most recent download for a specific video.
+- **External Playback**: The `HistoryDetailScreen` uses `IntentLauncher` (Android) and `Sharing` (iOS) to hand off video playback to the system's native player.
 - **expo-file-system imports**: always use `expo-file-system/legacy` (SDK 55 moved the old API there)
 - **No expo-symbols**: use `Ionicons` from `@expo/vector-icons` for all icons — expo-symbols is iOS-only
 - **Nested Pressables**: used for download buttons inside tappable cards — React Native handles propagation correctly, inner press does not bubble to outer
 - **Zustand outside React**: use `useStore.getState()` (e.g., `useSettingsStore.getState().getDownloadDir()`)
 - **Backend**: profile data is fetched from `https://tik-down-backend.vercel.app/tiktok?u=<username>&limit=<n>` as NDJSON (one `VideoPost` JSON object per line)
-- **Floating action button**: The previous custom draggable FAB was replaced with `react-native-floating-action` for a maintained, consistent UX. If draggable-only behaviour is preferred, consider `react-native-draggable` instead.
+- **Floating action button**: Uses `expo-fab` (integrated implementation) for an animated, menu-style FAB with backdrop blur. Dragging has been removed in favor of a consistent fixed position.
+- **Bottom Sheets**: Uses `@gorhom/bottom-sheet`. The global `LogsBottomSheet` uses `BottomSheetModal` which requires `BottomSheetModalProvider` at the root (`_layout.tsx`).
 
 ## Running Locally
 

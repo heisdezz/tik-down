@@ -1,5 +1,6 @@
-import * as FileSystem from 'expo-file-system/legacy';
-import { DownloadItem } from '@/types/download';
+import * as FileSystem from "expo-file-system/legacy";
+import { DownloadItem } from "@/types/download";
+import Logger from "@/lib/logger";
 
 const FILE_URI = `${FileSystem.documentDirectory}tik-down-downloads.json`;
 
@@ -9,13 +10,22 @@ export async function loadDownloads(): Promise<DownloadItem[]> {
     if (!info.exists) return [];
     const raw = await FileSystem.readAsStringAsync(FILE_URI);
     return JSON.parse(raw) as DownloadItem[];
-  } catch {
+  } catch (err) {
+    Logger.error("Failed to load downloads from storage", {
+      error: (err as Error).message,
+    });
     return [];
   }
 }
 
 export async function saveAllDownloads(items: DownloadItem[]): Promise<void> {
-  await FileSystem.writeAsStringAsync(FILE_URI, JSON.stringify(items));
+  try {
+    await FileSystem.writeAsStringAsync(FILE_URI, JSON.stringify(items));
+  } catch (err) {
+    Logger.error("Failed to save downloads to storage", {
+      error: (err as Error).message,
+    });
+  }
 }
 
 export async function persistDownload(item: DownloadItem): Promise<void> {

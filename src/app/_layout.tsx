@@ -1,18 +1,23 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
-import React, { useEffect, useState } from 'react';
-import { Platform, useColorScheme } from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { useDeviceContext } from 'twrnc';
+import {
+  DarkTheme,
+  DefaultTheme,
+  ThemeProvider,
+} from "@react-navigation/native";
+import { Stack } from "expo-router";
+import React, { useEffect, useState } from "react";
+import { Platform, useColorScheme } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
+import { useDeviceContext } from "twrnc";
 
-import tw from '@/lib/tw';
-import { useDownloadsStore } from '@/store/downloads';
-import { useProfilesStore } from '@/store/profiles';
-import { useSettingsStore } from '@/store/settings';
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import { FolderPickerModal } from '@/components/folder-picker-modal';
-import LogsBottomSheet from '@/components/logs-bottom-sheet';
-import GlobalFab from '@/components/global-fab';
+import tw from "@/lib/tw";
+import { useDownloadsStore } from "@/store/downloads";
+import { useProfilesStore } from "@/store/profiles";
+import { useSettingsStore } from "@/store/settings";
+import { AnimatedSplashOverlay } from "@/components/animated-icon";
+import { FolderPickerModal } from "@/components/folder-picker-modal";
+import LogsBottomSheet from "@/components/logs-bottom-sheet";
+import GlobalFab from "@/components/global-fab";
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -35,7 +40,7 @@ export default function RootLayout() {
   useEffect(() => {
     if (!settingsLoaded || hasAskedStorage) return;
 
-    if (Platform.OS !== 'android') {
+    if (Platform.OS !== "android") {
       useSettingsStore.getState().resetDownloadDir();
       return;
     }
@@ -55,19 +60,24 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <AnimatedSplashOverlay />
-        <Stack screenOptions={{ headerShown: false }} />
-        <FolderPickerModal
-          visible={showStorageModal}
-          onAppDocuments={handleAppDocuments}
-          onChooseFolder={handleChooseFolder}
-        />
+      <BottomSheetModalProvider>
+        <ThemeProvider
+          value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
+        >
+          <AnimatedSplashOverlay />
+          <Stack screenOptions={{ headerShown: false }} />
+          <FolderPickerModal
+            visible={showStorageModal}
+            onClose={() => setShowStorageModal(false)}
+            onAppDocuments={handleAppDocuments}
+            onChooseFolder={handleChooseFolder}
+          />
 
-        {/* Global logs bottom sheet and floating action button */}
-        <LogsBottomSheet />
-        <GlobalFab />
-      </ThemeProvider>
+          {/* Global logs bottom sheet and floating action button */}
+          <LogsBottomSheet />
+          <GlobalFab />
+        </ThemeProvider>
+      </BottomSheetModalProvider>
     </GestureHandlerRootView>
   );
 }
