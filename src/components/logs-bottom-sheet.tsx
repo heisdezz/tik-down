@@ -17,8 +17,25 @@ export default function LogsBottomSheet() {
   const [logs, setLogs] = useState<LogEntry[]>(() => Logger.getLogs().slice().reverse());
 
   useEffect(() => {
-    controller.open = () => sheetRef.current?.expand?.() || sheetRef.current?.snapToIndex?.(1);
-    controller.close = () => sheetRef.current?.close?.() || sheetRef.current?.snapToIndex?.(0);
+    controller.open = () => {
+      const ref = sheetRef.current;
+      if (!ref) return;
+      if (typeof ref.expand === 'function') {
+        ref.expand();
+      } else if (typeof ref.snapToIndex === 'function') {
+        ref.snapToIndex(1);
+      }
+    };
+
+    controller.close = () => {
+      const ref = sheetRef.current;
+      if (!ref) return;
+      if (typeof ref.close === 'function') {
+        ref.close();
+      } else if (typeof ref.snapToIndex === 'function') {
+        ref.snapToIndex(0);
+      }
+    };
   }, []);
 
   useEffect(() => {
