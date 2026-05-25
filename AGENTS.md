@@ -127,6 +127,7 @@ On first launch `_layout.tsx` shows `<FolderPickerModal>` to let the user choose
 - **Nested Pressables**: used for download buttons inside tappable cards — React Native handles propagation correctly, inner press does not bubble to outer
 - **Zustand outside React**: use `useStore.getState()` (e.g., `useSettingsStore.getState().getDownloadDir()`)
 - **Backend**: profile data is fetched from `https://tik-down-backend.vercel.app/tiktok?u=<username>&limit=<n>` as NDJSON (one `VideoPost` JSON object per line)
+- **Floating action button**: The previous custom draggable FAB was replaced with `react-native-floating-action` for a maintained, consistent UX. If draggable-only behaviour is preferred, consider `react-native-draggable` instead.
 
 ## Running Locally
 
