@@ -7,6 +7,8 @@ Core utility layer for API interaction, file system management, state persistenc
 ## `api.ts` — TikTok API
 Handles communication with the backend for fetching TikTok profile data.
 - **`fetchTikTokProfile`**: Streams NDJSON from `https://tik-down-backend.vercel.app/tiktok`.
+  - **Authenticated Requests**: Automatically detects a TikTok session from `useAuthStore`. If present, uses a `POST` request with the `sessionid` cookie value in the body to access restricted or private profiles.
+  - **Fallback**: Uses a standard `GET` request for public profiles if no session is available.
 - **Streaming Support**: Uses `ReadableStream` (via `res.body.getReader()`) to process videos as they arrive, falling back to full-text parsing if streaming is unavailable in the environment.
 
 ## `download.ts` — Video Downloader

@@ -32,7 +32,7 @@ export const useProfilesStore = create<ProfilesStore>()(
         const videos: TikTokProfile["videos"] = [];
 
         try {
-          await fetchTikTokProfile(username, 30, (video) => {
+          await fetchTikTokProfile(username, (video) => {
             videos.push(video);
           });
 
@@ -51,11 +51,12 @@ export const useProfilesStore = create<ProfilesStore>()(
             username,
             videoCount: videos.length,
           });
-          return username;
+          return profile;
         } catch (err) {
           if ((err as Error).name === "AbortError") {
             Logger.info("Profile fetch aborted", { username });
-            return username;
+            // Re-throw or return existing if possible, but throwing is safer for mutations
+            throw err;
           }
           const msg =
             err instanceof Error ? err.message : "Failed to fetch profile";

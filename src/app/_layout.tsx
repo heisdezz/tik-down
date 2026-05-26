@@ -34,10 +34,10 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
   useDeviceContext(tw);
 
-  const [showStorageModal, setShowStorageModal] = useState(false);
-
   const settingsLoaded = useSettingsStore((s) => s.loaded);
   const hasAskedStorage = useSettingsStore((s) => s.hasAskedStorage);
+  const showFolderPicker = useSettingsStore((s) => s.showFolderPicker);
+  const setShowFolderPicker = useSettingsStore((s) => s.setShowFolderPicker);
 
   useEffect(() => {
     if (!settingsLoaded || hasAskedStorage) return;
@@ -47,16 +47,16 @@ export default function RootLayout() {
       return;
     }
 
-    setShowStorageModal(true);
-  }, [settingsLoaded, hasAskedStorage]);
+    setShowFolderPicker(true);
+  }, [settingsLoaded, hasAskedStorage, setShowFolderPicker]);
 
   async function handleAppDocuments() {
-    setShowStorageModal(false);
+    setShowFolderPicker(false);
     await useSettingsStore.getState().resetDownloadDir();
   }
 
   async function handleChooseFolder() {
-    setShowStorageModal(false);
+    setShowFolderPicker(false);
     await useSettingsStore.getState().pickDownloadDir();
   }
 
@@ -70,12 +70,11 @@ export default function RootLayout() {
             <AnimatedSplashOverlay />
             <Stack screenOptions={{ headerShown: false }} />
             <FolderPickerModal
-              visible={showStorageModal}
-              onClose={() => setShowStorageModal(false)}
+              visible={showFolderPicker}
+              onClose={() => setShowFolderPicker(false)}
               onAppDocuments={handleAppDocuments}
               onChooseFolder={handleChooseFolder}
             />
-
             {/* Global logs bottom sheet and floating action button */}
             <LogsBottomSheet />
             <GlobalFab />

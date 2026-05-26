@@ -8,9 +8,11 @@
     "scheme": "tikdown",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.destiny.tikdown"
     },
     "android": {
+      "package": "com.anonymous.tikdown",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

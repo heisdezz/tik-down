@@ -45,17 +45,20 @@ tik-down/
 │   └── validator.ts       # validateFileExists — check presence of files/SAF URIs
 ├── types/                 # Shared types (importable as @/types/*)
 │   ├── api.ts             # VideoPost, TikTokThumbnail
+│   ├── auth.ts            # TikTokSession, AuthStore
 │   ├── download.ts        # DownloadItem, DownloadStatus
 │   └── profile.ts         # TikTokProfile, ProfilesStore
 ├── src/
 │   ├── app/
-│   │   ├── _layout.tsx    # Root layout — hydrates all stores, first-launch storage prompt
+│   │   ├── _layout.tsx    # Root layout — hydrates all stores, global modals (Storage, Logs)
 │   │   ├── (tabs)/
 │   │   │   ├── _layout.tsx      # Tab bar (Ionicons icons, pastel primary tint)
 │   │   │   ├── home.tsx         # Home tab — toggles between All and Accounts views
 │   │   │   ├── tiktok.tsx       # Profile search + saved profile list
 │   │   │   ├── instagram.tsx    # Instagram tab (stub)
-│   │   │   └── settings.tsx     # Stats, storage location, danger zone
+│   │   │   └── settings.tsx     # Stats, storage location, danger zone, accounts
+│   │   ├── auth/
+│   │   │   └── tiktok-login.tsx # WebView login portal for cookie extraction
 │   │   ├── profile/[username].tsx  # Profile detail — video list with per-video download status
 │   │   └── history/[id].tsx     # Download detail
 │   ├── components/
@@ -64,11 +67,12 @@ tik-down/
 │   │   │   └── accounts-tab.tsx # Summarized list of downloaded-from accounts
 │   │   ├── download-card.tsx    # Reusable history item card with status/progress
 │   │   ├── profile-card.tsx     # Saved-profile row with aggregate download progress bar
-│   │   ├── folder-picker-modal.tsx  # Themed modal for storage-dir selection (SAF support)
+│   │   ├── folder-picker-modal.tsx  # Global themed modal for storage-dir selection (SAF support)
 │   │   └── ...                  # UI primitives (animated-icon, collapsible, etc.)
 │   ├── constants/theme.ts       # Colors (light/dark), Spacing, Fonts — imports palette from @/lib/tw
 │   ├── hooks/use-theme.ts       # useTheme() → Colors[scheme]
 │   └── store/
+│       ├── auth.ts              # Zustand: TikTok session cookies persistence
 │       ├── downloads.ts         # Zustand: download queue, runDownload, marks profile on completion
 │       ├── profiles.ts          # Zustand: fetched TikTok profiles, downloadedVideoIds tracking
 │       └── settings.ts          # Zustand: download dir (SAF or app-docs), first-launch flag
@@ -122,6 +126,12 @@ Persists app settings to MMKV (`tik-down-settings`).
 - `pickDownloadDir()` — opens Android SAF folder picker
 - `resetDownloadDir()` — reverts to app documents
 - `concurrentDownloads` — user setting for maximum simultaneous downloads (1-5)
+
+### `useAuthStore` (`src/store/auth.ts`)
+Persists TikTok authentication state to MMKV (`tik-down-auth`).
+- `tiktok` — contains `cookies` string and `updatedAt` timestamp
+- `setTikTokSession(session)` — saves new session after WebView extraction
+- `clearSession()` — removes cookies from local storage
 
 ## Data Fetching & Caching
 
@@ -180,7 +190,10 @@ The app uses Android Storage Access Framework (SAF) for user-chosen folders. SAF
 - **No expo-symbols**: use `Ionicons` from `@expo/vector-icons` for all icons — expo-symbols is iOS-only
 - **Nested Pressables**: used for download buttons inside tappable cards — React Native handles propagation correctly, inner press does not bubble to outer
 - **Zustand outside React**: use `useStore.getState()` (e.g., `useSettingsStore.getState().getDownloadDir()`). Note that stores hydrate asynchronously on startup; use `onRehydrateStorage` for startup logic.
-- **Backend**: profile data is fetched from `https://tik-down-backend.vercel.app/tiktok?u=<username>&limit=<n>` as NDJSON (one `VideoPost` JSON object per line)
+- **Backend**: profile data is fetched from `https://tik-down-backend.vercel.app/tiktok`. 
+    - Uses `GET ?u=<username>` for public profiles.
+    - Uses `POST` with `{"u": "...", "tt_session_id": "..."}` if a session is available in `useAuthStore` to access restricted profiles.
+    - Responses are streamed as NDJSON (one `VideoPost` JSON object per line).
 - **Floating action button**: `src/components/global-fab.tsx` — animated menu-style FAB with backdrop blur. Draggable when collapsed via `Gesture.Exclusive(pan, tap)` from `react-native-gesture-handler`; snaps to nearest horizontal edge on release. When expanded, animates to a fixed full-width position regardless of drag position.
 - **Bottom Sheets**: Uses `@gorhom/bottom-sheet`. The global `LogsBottomSheet` uses `BottomSheetModal` which requires `BottomSheetModalProvider` at the root (`_layout.tsx`).
 

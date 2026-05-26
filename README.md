@@ -1,56 +1,63 @@
-# Welcome to your Expo app 👋
+# TikDown 🚀
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A high-performance, feature-rich TikTok video downloader built with **Expo SDK 55**, **React Native**, and **TypeScript**. Designed for speed, reliability, and handling large bulk downloads with ease.
 
-## Get started
+## ✨ Features
 
-1. Install dependencies
+- **Prioritized Download Queue**: Managed worker pool with concurrency control (1-5 videos) and priority tiers (High for single downloads, Low for bulk operations).
+- **Resilient Downloads**: Automatic exponential backoff for provider rate limits (429 errors) and rehydration recovery for interrupted tasks.
+- **Android SAF Support**: Full integration with Storage Access Framework (SAF) for user-selected external folders, including directory reuse and a write-mutex to prevent thread blocking.
+- **Hybrid Caching Architecture**:
+  - **TanStack React Query**: Manages fetching lifecycle and in-memory cache for profile data.
+  - **Zustand + MMKV**: Provides ultra-fast persistent storage for downloads, profiles, and settings.
+  - **URL Cache**: 6-hour TTL for resolved CDN URLs to minimize redundant scraping.
+- **High-Performance UI**: Uses `@shopify/flash-list` for smooth 1000+ item scrolling and targeted Zustand selectors to prevent unnecessary re-renders during progress updates.
+- **Library Validation**: Integrated integrity checks via pull-to-refresh and manual re-check buttons to keep your local library in sync.
 
+## 🛠 Tech Stack
+
+| Layer | Choice |
+|---|---|
+| **Framework** | Expo SDK 55, Expo Router (File-based) |
+| **State** | Zustand v5 + TanStack React Query v5 |
+| **Persistence** | `react-native-mmkv` (C++ high-performance storage) |
+| **Styling** | `twrnc` (Tailwind RN) + Custom Pastel Palette |
+| **I/O** | `expo-file-system` (Legacy API) + `axios` |
+| **Animations** | `react-native-reanimated` |
+
+## 🚀 Getting Started
+
+### Prerequisites
+- [Bun](https://bun.sh/) (recommended) or npm
+- [Expo Go](https://expo.dev/go) or a Development Build environment
+
+### Installation
+1. Clone the repository
    ```bash
-   npm install
+   git clone https://github.com/heisdezz/tik-down.git
+   cd tik-down
+   ```
+2. Install dependencies
+   ```bash
+   bun install
    ```
 
-2. Start the app
+### Running Locally
+- **Android**: `bun run android`
+- **iOS**: `bun run ios`
+- **Web**: `bun run web`
 
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
+### Verification
+Always verify code integrity before committing:
 ```bash
-npm run reset-project
+bunx tsgo --noEmit
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## 📖 Documentation
+For deeper architectural insights, refer to our specialized guides:
+- [Main Agent Guide](./AGENTS.md)
+- [Library Implementation](./lib/AGENTS.md)
+- [Store Architecture](./src/store/AGENTS.md)
 
-### Other setup steps
-
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+---
+*Built with ❤️ for the TikTok community.*

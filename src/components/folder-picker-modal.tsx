@@ -1,16 +1,14 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
-  Animated,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  useColorScheme,
-  View,
-} from "react-native";
+  BottomSheetModal,
+  BottomSheetView,
+  BottomSheetBackdrop,
+} from "@gorhom/bottom-sheet";
 
 import { Colors, Spacing } from "@/constants/theme";
+import { useTheme } from "@/hooks/use-theme";
 
 type IoniconsName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -70,152 +68,90 @@ export function FolderPickerModal({
   onChooseFolder: () => void;
   onClose?: () => void;
 }) {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === "dark" ? "dark" : "light"];
-
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
-  const sheetY = useRef(new Animated.Value(400)).current;
+  const colors = useTheme();
+  const sheetRef = useRef<BottomSheetModal>(null);
+  const snapPoints = useMemo(() => ["55%"], []);
 
   useEffect(() => {
     if (visible) {
-      Animated.parallel([
-        Animated.timing(backdropOpacity, {
-          toValue: 1,
-          duration: 250,
-          useNativeDriver: true,
-        }),
-        Animated.spring(sheetY, {
-          toValue: 0,
-          damping: 20,
-          stiffness: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      // Use a small delay to ensure the modal is ready to be presented
+      const handle = requestAnimationFrame(() => {
+        sheetRef.current?.present();
+      });
+      return () => cancelAnimationFrame(handle);
     } else {
-      Animated.parallel([
-        Animated.timing(backdropOpacity, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(sheetY, {
-          toValue: 400,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      sheetRef.current?.dismiss();
     }
-  }, [visible, backdropOpacity, sheetY]);
+  }, [visible]);
+
+  const renderBackdrop = useCallback(
+    (props: any) => (
+      <BottomSheetBackdrop
+        {...props}
+        disappearsAtIndex={-1}
+        appearsAtIndex={0}
+        opacity={0.5}
+      />
+    ),
+    [],
+  );
 
   return (
-    <Modal
-      transparent
-      visible={visible}
-      statusBarTranslucent
-      animationType="none"
-      onRequestClose={onClose}
+    <BottomSheetModal
+      ref={sheetRef}
+      index={0}
+      snapPoints={snapPoints}
+      enablePanDownToClose
+      backdropComponent={renderBackdrop}
+      onDismiss={onClose}
+      handleStyle={{ backgroundColor: colors.background }}
+      handleIndicatorStyle={{ backgroundColor: colors.backgroundSelected }}
+      backgroundStyle={{ backgroundColor: colors.background }}
     >
-      <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
-        <Animated.View
-          style={[styles.backdrop, { opacity: backdropOpacity }]}
-        />
-      </Pressable>
-
-      <View style={styles.sheetContainer} pointerEvents="box-none">
-        <Animated.View
-          style={[
-            styles.sheet,
-            {
-              backgroundColor: colors.background,
-              transform: [{ translateY: sheetY }],
-            },
-          ]}
-        >
+      <BottomSheetView style={styles.content}>
+        <View style={styles.header}>
           <View
             style={[
-              styles.handle,
-              { backgroundColor: colors.backgroundSelected },
+              styles.headerIcon,
+              { backgroundColor: colors.backgroundElement },
             ]}
+          >
+            <Ionicons name="folder-open" size={28} color={colors.primary} />
+          </View>
+          <Text style={[styles.title, { color: colors.text }]}>
+            Choose Download Folder
+          </Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            Where should TikDown save your videos?{"\n"}You can change this
+            later in Settings.
+          </Text>
+        </View>
+
+        <View style={styles.options}>
+          <OptionCard
+            icon="phone-portrait-outline"
+            title="App Documents"
+            subtitle="Private to TikDown, always available"
+            onPress={onAppDocuments}
+            colors={colors}
           />
-
-          {onClose && (
-            <Pressable onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={20} color={colors.textSecondary} />
-            </Pressable>
-          )}
-
-          <View style={styles.header}>
-            <View
-              style={[
-                styles.headerIcon,
-                { backgroundColor: colors.backgroundElement },
-              ]}
-            >
-              <Ionicons name="folder-open" size={28} color={colors.primary} />
-            </View>
-            <Text style={[styles.title, { color: colors.text }]}>
-              Choose Download Folder
-            </Text>
-            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-              Where should TikDown save your videos?{"\n"}You can change this
-              later in Settings.
-            </Text>
-          </View>
-
-          <View style={styles.options}>
-            <OptionCard
-              icon="phone-portrait-outline"
-              title="App Documents"
-              subtitle="Private to TikDown, always available"
-              onPress={onAppDocuments}
-              colors={colors}
-            />
-            <OptionCard
-              icon="folder-open-outline"
-              title="Choose Folder"
-              subtitle="Pick any folder on your device"
-              onPress={onChooseFolder}
-              colors={colors}
-            />
-          </View>
-        </Animated.View>
-      </View>
-    </Modal>
+          <OptionCard
+            icon="folder-open-outline"
+            title="Choose Folder"
+            subtitle="Pick any folder on your device"
+            onPress={onChooseFolder}
+            colors={colors}
+          />
+        </View>
+      </BottomSheetView>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
-  sheetContainer: {
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  sheet: {
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    padding: Spacing.four,
+  content: {
+    paddingHorizontal: Spacing.four,
     paddingBottom: Spacing.six,
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    alignSelf: "center",
-    marginBottom: Spacing.four,
-  },
-  closeButton: {
-    position: "absolute",
-    top: Spacing.four,
-    right: Spacing.four,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "rgba(128,128,128,0.1)",
-    alignItems: "center",
-    justifyContent: "center",
   },
   header: { alignItems: "center", marginBottom: Spacing.four },
   headerIcon: {

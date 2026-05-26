@@ -38,9 +38,9 @@ export default function TikTokScreen() {
     inputRef.current?.blur();
 
     try {
-      const username = await updateMutation.mutateAsync(raw);
+      const profile = await updateMutation.mutateAsync(raw);
       setInput("");
-      router.push(`/profile/${username}`);
+      router.push(`/profile/${profile.username}`);
     } catch (err) {
       // Error is already logged in the mutation or store
     }

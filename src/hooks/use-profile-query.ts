@@ -16,9 +16,13 @@ export function useProfileQuery(rawUsername: string) {
     queryFn: async (): Promise<TikTokProfile> => {
       const videos: VideoPost[] = [];
       try {
-        await fetchTikTokProfile(username, 30, (video) => {
-          videos.push(video);
-        });
+        await fetchTikTokProfile(
+          username,
+          (video) => {
+            videos.push(video);
+          },
+          30,
+        );
 
         const profile: TikTokProfile = {
           username,
@@ -41,6 +45,8 @@ export function useProfileQuery(rawUsername: string) {
     },
 
     enabled: !!username,
+    initialData: existingProfile,
+    staleTime: Infinity,
   });
 }
 
@@ -50,12 +56,10 @@ export function useUpdateProfileMutation() {
 
   return useMutation({
     mutationFn: async (username: string) => {
-      await fetchProfile(username);
-      // The store update is already handled inside fetchProfile
-      return username;
+      return await fetchProfile(username);
     },
-    onSuccess: (username) => {
-      queryClient.invalidateQueries({ queryKey: ["profile", username] });
+    onSuccess: (profile) => {
+      queryClient.setQueryData(["profile", profile.username], profile);
     },
   });
 }

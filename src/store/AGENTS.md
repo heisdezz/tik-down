@@ -31,8 +31,15 @@ App configuration and storage permissions.
 - **Storage Management**:
   - **SAF (Android)**: Handles the Storage Access Framework handshake. Returns `content://` URIs for external folders.
   - **Internal**: Falls back to `documentDirectory/TikDown/`.
+- **UI State**: Manages `showFolderPicker` to control the global storage selection modal from anywhere in the app.
 - **Concurrency Config**: Controls the `concurrentDownloads` limit used by the Downloads Store.
 - **MMKV Storage**: Uses the `tik-down-settings` key.
+
+## `auth.ts` — Auth Store
+Persistence for TikTok session cookies.
+- **Session Management**: Stores the raw cookie string extracted from the login portal.
+- **Metadata**: Tracks the last update time to help with session expiration logic.
+- **MMKV Storage**: Uses the `tik-down-auth` key.
 
 ---
 

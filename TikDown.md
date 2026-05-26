@@ -8,21 +8,30 @@ Backend that streams social media profile video metadata via yt-dlp.
 
 ## Endpoints
 
-### `GET /tiktok`
+### `POST /tiktok`
 
 Streams video metadata from a TikTok profile as NDJSON.
+Session cookie is passed per-request in the JSON body — nothing is stored server-side.
 
-#### Query Parameters
+#### Request Body (JSON)
 
-| Param   | Required | Description |
-|---------|----------|-------------|
-| `u`     | Yes      | Username, `@username`, or full `https://www.tiktok.com/@username` URL |
-| `limit` | No       | Max videos to return. Recommended max: 50. |
+| Field           | Required | Description |
+|-----------------|----------|-------------|
+| `u`             | Yes      | Username, `@username`, or full `https://www.tiktok.com/@username` URL |
+| `tt_session_id` | Yes      | TikTok `sessionid` cookie value |
+| `limit`         | No       | Max videos to return. Recommended max: 50. |
 
 #### Example
 
 ```
-GET /tiktok?u=charlidamelio&limit=20
+POST /tiktok
+Content-Type: application/json
+
+{
+  "u": "charlidamelio",
+  "tt_session_id": "abc123...",
+  "limit": 20
+}
 ```
 
 ---
@@ -30,7 +39,7 @@ GET /tiktok?u=charlidamelio&limit=20
 ### `POST /instagram`
 
 Streams post metadata from an Instagram profile as NDJSON.
-Session ID is passed per-request in the JSON body — nothing is stored server-side.
+Session cookie is passed per-request in the JSON body — nothing is stored server-side.
 
 #### Request Body (JSON)
 
@@ -84,9 +93,10 @@ Content-Type: application/json
 
 | Status | Condition |
 |--------|-----------|
-| `400`  | Missing or invalid params |
+| `400`  | Missing or invalid `u` / malformed body |
+| `401`  | Missing session cookie (`tt_session_id` / `ig_session_id`) |
 | `404`  | Profile not found / no public posts |
-| `405`  | Wrong HTTP method |
+| `405`  | Wrong HTTP method (GET on these routes) |
 | `500`  | yt-dlp failed to initialize |
 | `502`  | Could not reach TikTok / Instagram |
 
@@ -102,13 +112,17 @@ Content-Type: application/json
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-Future<void> fetchTikTok(String username, {int limit = 20}) async {
-  final uri = Uri.https('tik-down-backend.vercel.app', '/tiktok', {
-    'u': username,
-    'limit': '$limit',
-  });
+Future<void> fetchTikTok(
+  String username,
+  String sessionId, {
+  int limit = 20,
+}) async {
+  final uri = Uri.https('tik-down-backend.vercel.app', '/tiktok');
+  final request = http.Request('POST', uri)
+    ..headers['Content-Type'] = 'application/json'
+    ..body = jsonEncode({'u': username, 'tt_session_id': sessionId, 'limit': limit});
 
-  final response = await http.Client().send(http.Request('GET', uri));
+  final response = await http.Client().send(request);
   if (response.statusCode != 200) {
     final body = await response.stream.bytesToString();
     throw Exception(jsonDecode(body)['error']);
@@ -167,9 +181,12 @@ Future<void> fetchInstagram(
 **TikTok**
 
 ```js
-async function fetchTikTok(username, limit = 20) {
-  const params = new URLSearchParams({ u: username, limit: String(limit) });
-  const res = await fetch(`https://tik-down-backend.vercel.app/tiktok?${params}`);
+async function fetchTikTok(username, sessionId, limit = 20) {
+  const res = await fetch('https://tik-down-backend.vercel.app/tiktok', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ u: username, tt_session_id: sessionId, limit }),
+  });
 
   if (!res.ok) throw new Error((await res.json()).error);
 
@@ -232,13 +249,15 @@ async function fetchInstagram(username, sessionId, limit = 20) {
 **TikTok**
 
 ```swift
-func fetchTikTok(username: String, limit: Int = 20) async throws {
-    var components = URLComponents(string: "https://tik-down-backend.vercel.app/tiktok")!
-    components.queryItems = [
-        URLQueryItem(name: "u", value: username),
-        URLQueryItem(name: "limit", value: "\(limit)"),
-    ]
-    let (stream, response) = try await URLSession.shared.bytes(from: components.url!)
+func fetchTikTok(username: String, sessionId: String, limit: Int = 20) async throws {
+    let url = URL(string: "https://tik-down-backend.vercel.app/tiktok")!
+    var req = URLRequest(url: url)
+    req.httpMethod = "POST"
+    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    req.httpBody = try JSONSerialization.data(withJSONObject: [
+        "u": username, "tt_session_id": sessionId, "limit": limit
+    ])
+    let (stream, response) = try await URLSession.shared.bytes(for: req)
     guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
     for try await line in stream.lines {
         guard !line.isEmpty, let data = line.data(using: .utf8),
@@ -275,7 +294,7 @@ func fetchInstagram(username: String, sessionId: String, limit: Int = 20) async 
 
 ## Caching
 
-- TTL: **5 minutes** per `profileUrl + limit` (+ session ID tail for Instagram)
+- TTL: **5 minutes** per `profileUrl + limit + session ID tail`
 - Cache hits replay stored lines instantly — no yt-dlp invocation
 - Check `X-Cache: HIT` header to confirm
 
@@ -290,4 +309,4 @@ func fetchInstagram(username: String, sessionId: String, limit: Int = 20) async 
 | `@username` | Leading `@` stripped before validation |
 | Full URL | Must parse as valid URL with matching platform hostname |
 | `limit` | Optional integer, recommended max **50** |
-| `ig_session_id` | URL-encoded values are decoded automatically |
+| Session IDs | URL-encoded values decoded automatically |

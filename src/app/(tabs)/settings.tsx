@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   useColorScheme,
@@ -11,9 +12,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { useRouter } from "expo-router";
 import tw from "@/lib/tw";
 import { useDownloadsStore } from "@/store/downloads";
 import { useSettingsStore, parseDownloadDirLabel } from "@/store/settings";
+import { useAuthStore } from "@/store/auth";
 import { FolderPickerModal } from "@/components/folder-picker-modal";
 import { Colors, Spacing } from "@/constants/theme";
 
@@ -71,20 +74,25 @@ function SettingRow({
 }
 
 export default function SettingsScreen() {
+  const router = useRouter();
   const scheme = useColorScheme();
   const colors = Colors[scheme === "dark" ? "dark" : "light"];
   const [cacheSize, setCacheSize] = useState<string>("Calculating…");
 
+  const tiktokSession = useAuthStore((s) => s.tiktok);
+  const clearTikTokSession = useAuthStore((s) => s.clearSession);
+
   const items = useDownloadsStore((s) => s.items);
   const removeDownload = useDownloadsStore((s) => s.removeDownload);
 
-  const [showFolderModal, setShowFolderModal] = useState(false);
   const {
     downloadDirUri,
+    showFolderPicker,
     pickDownloadDir,
     resetDownloadDir,
     concurrentDownloads,
     setConcurrentDownloads,
+    setShowFolderPicker,
   } = useSettingsStore();
 
   const downloadDirLabel = parseDownloadDirLabel(downloadDirUri);
@@ -106,14 +114,14 @@ export default function SettingsScreen() {
     } catch {
       setCacheSize("Unknown");
     }
-  }, []);
+  }, [downloadDirUri]);
 
   useEffect(() => {
     calcCacheSize();
   }, [calcCacheSize]);
 
   function handleChangeDownloadDir() {
-    setShowFolderModal(true);
+    setShowFolderPicker(true);
   }
 
   function handleCycleConcurrent() {
@@ -156,7 +164,44 @@ export default function SettingsScreen() {
         </Text>
       </View>
 
-      <View style={tw`px-4 gap-6`}>
+      <ScrollView
+        style={tw`flex-1`}
+        contentContainerStyle={tw`px-4 pb-8 gap-6`}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={tw`gap-2`}>
+          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>
+            ACCOUNTS
+          </Text>
+          <View
+            style={[
+              styles.group,
+              { backgroundColor: colors.backgroundElement },
+            ]}
+          >
+            <SettingRow
+              label="TikTok Session"
+              value={tiktokSession ? "Logged In" : "Not Logged In"}
+              onPress={() => router.push("/auth/tiktok-login")}
+            />
+            {tiktokSession && (
+              <>
+                <View
+                  style={[
+                    styles.divider,
+                    { backgroundColor: colors.backgroundSelected },
+                  ]}
+                />
+                <SettingRow
+                  label="Clear TikTok Session"
+                  onPress={clearTikTokSession}
+                  destructive
+                />
+              </>
+            )}
+          </View>
+        </View>
+
         <View style={tw`gap-2`}>
           <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>
             STATISTICS
@@ -266,18 +311,18 @@ export default function SettingsScreen() {
             <SettingRow label="Backend" value="tik-down-backend.vercel.app" />
           </View>
         </View>
-      </View>
+      </ScrollView>
 
       <FolderPickerModal
-        visible={showFolderModal}
-        onClose={() => setShowFolderModal(false)}
+        visible={showFolderPicker}
+        onClose={() => setShowFolderPicker(false)}
         onAppDocuments={async () => {
-          setShowFolderModal(false);
+          setShowFolderPicker(false);
           await resetDownloadDir();
           calcCacheSize();
         }}
         onChooseFolder={async () => {
-          setShowFolderModal(false);
+          setShowFolderPicker(false);
           await pickDownloadDir();
           calcCacheSize();
         }}

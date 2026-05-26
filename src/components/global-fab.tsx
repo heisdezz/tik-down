@@ -6,9 +6,7 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   Easing,
   SharedValue,
-  useAnimatedProps,
   useAnimatedStyle,
-  useDerivedValue,
   useSharedValue,
   withDelay,
   withSpring,
@@ -19,8 +17,6 @@ import { useTheme } from "@/hooks/use-theme";
 import { openLogsSheet } from "@/components/logs-bottom-sheet";
 import { useRouter } from "expo-router";
 
-const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
-const AnimatedView = Animated.createAnimatedComponent(View);
 const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
@@ -63,23 +59,25 @@ const MenuItem: React.FC<MenuItemProps> = ({
   }));
 
   return (
-    <AnimatedTouchableOpacity
-      style={[tw`flex-row items-center py-4 px-2`, itemStyle]}
-      activeOpacity={0.7}
-      onPress={onPress}
-    >
-      <View style={[tw`w-10 h-10 rounded-full justify-center items-center mr-5`, { backgroundColor: colors.backgroundSelected }]}>
-        <Ionicons name={icon as any} size={24} color={colors.text} />
-      </View>
-      <View style={tw`flex-1`}>
-        <Text style={[tw`text-base font-semibold mb-1`, { color: colors.text }]}>
-          {title}
-        </Text>
-        <Text style={[tw`text-[13px] leading-[18px]`, { color: colors.textSecondary }]}>
-          {subtitle}
-        </Text>
-      </View>
-    </AnimatedTouchableOpacity>
+    <Animated.View style={[tw`flex-row items-center py-4 px-2`, itemStyle]}>
+      <TouchableOpacity
+        style={tw`flex-row items-center flex-1`}
+        activeOpacity={0.7}
+        onPress={onPress}
+      >
+        <View style={[tw`w-10 h-10 rounded-full justify-center items-center mr-5`, { backgroundColor: colors.backgroundSelected }]}>
+          <Ionicons name={icon as any} size={24} color={colors.text} />
+        </View>
+        <View style={tw`flex-1`}>
+          <Text style={[tw`text-base font-semibold mb-1`, { color: colors.text }]}>
+            {title}
+          </Text>
+          <Text style={[tw`text-[13px] leading-[18px]`, { color: colors.textSecondary }]}>
+            {subtitle}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
   );
 };
 
@@ -88,64 +86,54 @@ export default function GlobalFab() {
   const colors = useTheme();
   const colorScheme = useColorScheme();
   const isExpanded = useSharedValue(false);
+  const isAnimatingClose = useSharedValue(false);
 
-  // Draggable position — start at bottom-right (mirrors original right:20, bottom:90)
   const fabLeft = useSharedValue(screenWidth - EDGE_MARGIN - FAB_SIZE);
   const fabTop = useSharedValue(screenHeight - 90 - FAB_SIZE);
   const dragStartLeft = useSharedValue(0);
   const dragStartTop = useSharedValue(0);
-  const hasDragged = useSharedValue(false);
 
   const panGesture = Gesture.Pan()
     .minDistance(5)
     .onStart(() => {
       dragStartLeft.value = fabLeft.value;
       dragStartTop.value = fabTop.value;
-      hasDragged.value = false;
     })
     .onUpdate((e) => {
-      if (isExpanded.value) return;
-      hasDragged.value = true;
+      if (isExpanded.value || isAnimatingClose.value) return;
       fabLeft.value = dragStartLeft.value + e.translationX;
       fabTop.value = dragStartTop.value + e.translationY;
     })
     .onEnd(() => {
-      if (!hasDragged.value || isExpanded.value) return;
-      // Snap to nearest horizontal edge
+      if (isExpanded.value || isAnimatingClose.value) return;
       const snapRight = fabLeft.value + FAB_SIZE / 2 > screenWidth / 2;
       fabLeft.value = withSpring(
         snapRight ? screenWidth - EDGE_MARGIN - FAB_SIZE : EDGE_MARGIN,
         { damping: 20, stiffness: 200 },
       );
-      // Clamp vertical so FAB stays on screen
       const minTop = 50;
       const maxTop = screenHeight - 120;
       if (fabTop.value < minTop) fabTop.value = withSpring(minTop);
       if (fabTop.value > maxTop) fabTop.value = withSpring(maxTop);
-      hasDragged.value = false;
     });
 
   const tapGesture = Gesture.Tap()
     .maxDistance(10)
     .onEnd((_, success) => {
-      if (success) {
-        isExpanded.value = !isExpanded.value;
+      if (!success) return;
+      if (isExpanded.value) {
+        isAnimatingClose.value = true;
+        isExpanded.value = false;
+      } else {
+        isExpanded.value = true;
       }
     });
 
-  // Pan takes priority; tap fires only when there is no movement
   const gesture = Gesture.Exclusive(panGesture, tapGesture);
 
-  const animatedOverlayOpacity = useDerivedValue(() =>
-    withTiming(isExpanded.value ? 1 : 0, { duration: 200 }),
-  );
-
   const backdropStyle = useAnimatedStyle(() => ({
-    opacity: animatedOverlayOpacity.value,
-  }));
-
-  const backdropProps = useAnimatedProps(() => ({
-    pointerEvents: (isExpanded.value ? "auto" : "none") as any,
+    opacity: withTiming(isExpanded.value ? 1 : 0, { duration: 200 }),
+    pointerEvents: isExpanded.value || isAnimatingClose.value ? "auto" : "none",
   }));
 
   const containerStyle = useAnimatedStyle(() => {
@@ -153,13 +141,23 @@ export default function GlobalFab() {
     const expandedLeft = EDGE_MARGIN;
     const expandedTop = screenHeight - EXPANDED_BOTTOM - EXPANDED_HEIGHT;
 
+    const closedLeft = isAnimatingClose.value
+      ? withTiming(fabLeft.value, { duration: 250, easing: Easing.out(Easing.quad) }, (done) => {
+          if (done) isAnimatingClose.value = false;
+        })
+      : fabLeft.value;
+
+    const closedTop = isAnimatingClose.value
+      ? withTiming(fabTop.value, { duration: 250, easing: Easing.out(Easing.quad) })
+      : fabTop.value;
+
     return {
       left: isExpanded.value
         ? withTiming(expandedLeft, { duration: 250, easing: Easing.out(Easing.quad) })
-        : fabLeft.value,
+        : closedLeft,
       top: isExpanded.value
         ? withTiming(expandedTop, { duration: 250, easing: Easing.out(Easing.quad) })
-        : fabTop.value,
+        : closedTop,
       width: withTiming(isExpanded.value ? expandedWidth : FAB_SIZE, {
         duration: 250,
         easing: Easing.out(Easing.quad),
@@ -169,7 +167,10 @@ export default function GlobalFab() {
         easing: Easing.out(Easing.quad),
       }),
       borderRadius: withTiming(isExpanded.value ? 20 : 28, { duration: 250 }),
-      backgroundColor: isExpanded.value ? colors.backgroundElement : colors.primary,
+      backgroundColor: withTiming(
+        isExpanded.value ? colors.backgroundElement : colors.primary,
+        { duration: 250 },
+      ),
     };
   });
 
@@ -188,6 +189,7 @@ export default function GlobalFab() {
   }));
 
   const handleClose = () => {
+    isAnimatingClose.value = true;
     isExpanded.value = false;
   };
 
@@ -214,10 +216,7 @@ export default function GlobalFab() {
 
   return (
     <>
-      <AnimatedView
-        style={[tw`absolute inset-0 bg-transparent`, { zIndex: 998 }, backdropStyle]}
-        animatedProps={backdropProps}
-      >
+      <Animated.View style={[tw`absolute inset-0`, { zIndex: 998 }, backdropStyle]}>
         <AnimatedBlurView
           intensity={80}
           style={tw`absolute inset-0`}
@@ -229,7 +228,7 @@ export default function GlobalFab() {
             activeOpacity={1}
           />
         </AnimatedBlurView>
-      </AnimatedView>
+      </Animated.View>
 
       <GestureDetector gesture={gesture}>
         <Animated.View

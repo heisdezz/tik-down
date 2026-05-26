@@ -13,7 +13,9 @@ interface SettingsData {
 
 interface SettingsStore extends SettingsData {
   loaded: boolean;
+  showFolderPicker: boolean;
   load: () => Promise<void>;
+  setShowFolderPicker: (show: boolean) => void;
   pickDownloadDir: () => Promise<boolean>;
   resetDownloadDir: () => Promise<void>;
   getDownloadDir: () => string;
@@ -31,12 +33,15 @@ export const useSettingsStore = create<SettingsStore>()(
       hasAskedStorage: false,
       concurrentDownloads: 2,
       loaded: false,
+      showFolderPicker: false,
 
       load: async () => {
         // With MMKV + Persist, this is mostly handled by onRehydrateStorage
         // But we keep it for compatibility with existing layout logic
         set({ loaded: true });
       },
+
+      setShowFolderPicker: (show) => set({ showFolderPicker: show }),
 
       pickDownloadDir: async () => {
         Logger.info("Initiating download directory picker");
@@ -89,6 +94,11 @@ export const useSettingsStore = create<SettingsStore>()(
     {
       name: "tik-down-settings",
       storage: createJSONStorage(() => mmkvStorage),
+      partialize: (state) => ({
+        downloadDirUri: state.downloadDirUri,
+        hasAskedStorage: state.hasAskedStorage,
+        concurrentDownloads: state.concurrentDownloads,
+      }),
       onRehydrateStorage: () => (state) => {
         if (state) {
           state.loaded = true;

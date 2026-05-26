@@ -14,7 +14,7 @@ export interface ProfilesStore {
   fetching: Record<string, boolean>;
   errors: Record<string, string | null>;
   hydrate: () => Promise<void>;
-  fetchProfile: (rawUsername: string) => Promise<string>;
+  fetchProfile: (rawUsername: string) => Promise<TikTokProfile>;
   saveProfile: (profile: TikTokProfile) => void;
   removeProfile: (username: string) => void;
   markVideoDownloaded: (username: string, videoId: string) => void;
