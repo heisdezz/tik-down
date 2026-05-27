@@ -55,9 +55,9 @@ jobs:
 
       - name: Build debug APK
         env:
-          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=512m"
+          JAVA_TOOL_OPTIONS: "-Xmx5g -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError"
         run: |
-          cd android && ./gradlew assembleDebug --no-daemon --stacktrace
+          cd android && ./gradlew assembleDebug --no-daemon --stacktrace --info 2>&1
 
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
