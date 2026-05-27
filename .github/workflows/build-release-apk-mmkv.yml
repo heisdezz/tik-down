@@ -1,9 +1,6 @@
 name: Build Release APK (mmkv)
 
 on:
-  push:
-    branches:
-      - mmkv
   workflow_dispatch:
 
 jobs:
