@@ -7,7 +7,7 @@ import {
   View,
 } from "react-native";
 import { WebView } from "react-native-webview";
-import CookieManager from "@react-native-cookies/cookies";
+import CookieManager from "@preeternal/react-native-cookie-manager";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
