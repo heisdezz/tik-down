@@ -4,7 +4,7 @@
     "slug": "tik-down",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/tik-down-logo.png",
     "scheme": "tikdown",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -12,7 +12,7 @@
       "bundleIdentifier": "com.destiny.tikdown"
     },
     "android": {
-      "package": "com.anonymous.tikdown",
+      "package": "com.destiny.tikdown",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

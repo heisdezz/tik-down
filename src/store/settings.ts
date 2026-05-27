@@ -9,6 +9,7 @@ interface SettingsData {
   downloadDirUri: string | null;
   hasAskedStorage: boolean;
   concurrentDownloads: number;
+  onboardingShown: boolean; // persisted flag: true once user completed or skipped onboarding
 }
 
 interface SettingsStore extends SettingsData {
@@ -20,6 +21,7 @@ interface SettingsStore extends SettingsData {
   resetDownloadDir: () => Promise<void>;
   getDownloadDir: () => string;
   setConcurrentDownloads: (count: number) => void;
+  setOnboardingSeen: () => void;
 }
 
 function defaultDir(): string {
@@ -34,6 +36,7 @@ export const useSettingsStore = create<SettingsStore>()(
       concurrentDownloads: 2,
       loaded: false,
       showFolderPicker: false,
+      onboardingShown: false,
 
       load: async () => {
         // With MMKV + Persist, this is mostly handled by onRehydrateStorage
@@ -90,6 +93,8 @@ export const useSettingsStore = create<SettingsStore>()(
       setConcurrentDownloads: (count) => {
         set({ concurrentDownloads: Math.max(1, Math.min(5, count)) });
       },
+
+      setOnboardingSeen: () => set({ onboardingShown: true }),
     }),
     {
       name: "tik-down-settings",
@@ -98,6 +103,7 @@ export const useSettingsStore = create<SettingsStore>()(
         downloadDirUri: state.downloadDirUri,
         hasAskedStorage: state.hasAskedStorage,
         concurrentDownloads: state.concurrentDownloads,
+        onboardingShown: state.onboardingShown,
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {

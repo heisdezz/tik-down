@@ -1,63 +1,80 @@
-# TikDown 🚀
+# TikDown
 
-A high-performance, feature-rich TikTok video downloader built with **Expo SDK 55**, **React Native**, and **TypeScript**. Designed for speed, reliability, and handling large bulk downloads with ease.
+A high-performance TikTok video downloader built with **Expo SDK 55**, **React Native 0.83**, and **TypeScript**. Designed for speed, reliability, and bulk downloads at scale.
 
-## ✨ Features
+## Features
 
-- **Prioritized Download Queue**: Managed worker pool with concurrency control (1-5 videos) and priority tiers (High for single downloads, Low for bulk operations).
-- **Resilient Downloads**: Automatic exponential backoff for provider rate limits (429 errors) and rehydration recovery for interrupted tasks.
-- **Android SAF Support**: Full integration with Storage Access Framework (SAF) for user-selected external folders, including directory reuse and a write-mutex to prevent thread blocking.
-- **Hybrid Caching Architecture**:
-  - **TanStack React Query**: Manages fetching lifecycle and in-memory cache for profile data.
-  - **Zustand + MMKV**: Provides ultra-fast persistent storage for downloads, profiles, and settings.
-  - **URL Cache**: 6-hour TTL for resolved CDN URLs to minimize redundant scraping.
-- **High-Performance UI**: Uses `@shopify/flash-list` for smooth 1000+ item scrolling and targeted Zustand selectors to prevent unnecessary re-renders during progress updates.
-- **Library Validation**: Integrated integrity checks via pull-to-refresh and manual re-check buttons to keep your local library in sync.
+- **Prioritized download queue** — worker pool with concurrency control (1–5 simultaneous downloads), priority tiers (High for single, Low for bulk), and exponential backoff for rate-limit (429) recovery.
+- **TikTok authentication** — in-app WebView login portal that captures session cookies for authenticated API access, bypassing public rate limits.
+- **Authenticated + unauthenticated API** — automatically uses a session token when available; falls back to unauthenticated requests. Profile data is streamed via NDJSON for fast progressive rendering.
+- **Android SAF support** — full Storage Access Framework integration for user-selected external folders, write-mutex to prevent thread contention, and reuse of previously granted URIs.
+- **Hybrid caching architecture**:
+  - **TanStack React Query** — fetching lifecycle and in-memory cache for profile data.
+  - **Zustand + MMKV** — persistent storage for downloads, profiles, settings, and auth state via C++ bindings.
+  - **URL cache** — 6-hour TTL on resolved CDN URLs to avoid redundant scraping.
+- **High-performance list rendering** — `@shopify/flash-list` for smooth scrolling across 1000+ items; targeted Zustand selectors to prevent re-renders during active progress updates.
+- **Library validation** — pull-to-refresh and manual re-check buttons verify local file integrity.
+- **Debug log viewer** — in-app bottom sheet showing structured logs with copy-all support.
+- **Session details modal** — view stored TikTok session info (username, user ID, timestamps, raw cookies) with one-tap copy.
 
-## 🛠 Tech Stack
+## Tech Stack
 
 | Layer | Choice |
 |---|---|
-| **Framework** | Expo SDK 55, Expo Router (File-based) |
+| **Framework** | Expo SDK 55, Expo Router (file-based) |
 | **State** | Zustand v5 + TanStack React Query v5 |
-| **Persistence** | `react-native-mmkv` (C++ high-performance storage) |
-| **Styling** | `twrnc` (Tailwind RN) + Custom Pastel Palette |
-| **I/O** | `expo-file-system` (Legacy API) + `axios` |
-| **Animations** | `react-native-reanimated` |
+| **Persistence** | `react-native-mmkv` (C++ key-value storage) |
+| **Styling** | `twrnc` (Tailwind RN) + custom pastel palette |
+| **Networking** | `axios` + native `fetch` (streaming NDJSON) |
+| **Animations** | `react-native-reanimated` 4 + `react-native-worklets` |
+| **Cookies** | `@preeternal/react-native-cookie-manager` |
+| **I/O** | `expo-file-system` (legacy API) |
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
-- [Bun](https://bun.sh/) (recommended) or npm
-- [Expo Go](https://expo.dev/go) or a Development Build environment
+- [Bun](https://bun.sh/)
+- Android device or emulator
 
 ### Installation
-1. Clone the repository
-   ```bash
-   git clone https://github.com/heisdezz/tik-down.git
-   cd tik-down
-   ```
-2. Install dependencies
-   ```bash
-   bun install
-   ```
 
-### Running Locally
-- **Android**: `bun run android`
-- **iOS**: `bun run ios`
-- **Web**: `bun run web`
+```bash
+git clone https://github.com/heisdezz/tik-down.git
+cd tik-down
+bun install
+```
 
-### Verification
-Always verify code integrity before committing:
+### Running locally
+
+```bash
+bun run android   # Android
+bun run ios       # iOS
+bun run web       # Web
+```
+
+### Type checking
+
 ```bash
 bunx tsgo --noEmit
 ```
 
-## 📖 Documentation
-For deeper architectural insights, refer to our specialized guides:
-- [Main Agent Guide](./AGENTS.md)
-- [Library Implementation](./lib/AGENTS.md)
-- [Store Architecture](./src/store/AGENTS.md)
+## Project Structure
 
----
-*Built with ❤️ for the TikTok community.*
+```
+src/
+  app/
+    (tabs)/         # Bottom tab screens (home, tiktok, instagram, settings)
+    auth/           # TikTok WebView login
+    history/        # Per-download detail view
+    profile/        # User profile + video grid
+  components/       # Shared UI components
+  store/            # Zustand stores (auth, downloads, profiles, settings)
+lib/                # Core logic (api, download, logger, mmkv, tiktok)
+types/              # Shared TypeScript types
+```
+
+## Documentation
+
+- [Agent Guide](./AGENTS.md)
+- [Lib internals](./lib/AGENTS.md)
+- [Store architecture](./src/store/AGENTS.md)

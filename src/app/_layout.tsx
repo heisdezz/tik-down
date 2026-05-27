@@ -19,6 +19,7 @@ import { AnimatedSplashOverlay } from "@/components/animated-icon";
 import { FolderPickerModal } from "@/components/folder-picker-modal";
 import LogsBottomSheet from "@/components/logs-bottom-sheet";
 import GlobalFab from "@/components/global-fab";
+import Onboarding from "@/components/onboarding";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -69,6 +70,8 @@ export default function RootLayout() {
           >
             <AnimatedSplashOverlay />
             <Stack screenOptions={{ headerShown: false }} />
+            {/* Onboarding overlay — component handles its own visibility and persistence */}
+            <Onboarding />
             <FolderPickerModal
               visible={showFolderPicker}
               onClose={() => setShowFolderPicker(false)}

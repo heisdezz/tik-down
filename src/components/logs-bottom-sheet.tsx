@@ -189,7 +189,7 @@ export default function LogsBottomSheet() {
 
         <BottomSheetFlatList
           data={logs}
-          keyExtractor={(i) => `${i.timestamp}-${i.level}-${i.message}`}
+          keyExtractor={(i, idx) => `${idx}-${i.timestamp}-${i.level}`}
           renderItem={renderItem}
           contentContainerStyle={{ paddingBottom: 60 }}
           showsVerticalScrollIndicator={false}
